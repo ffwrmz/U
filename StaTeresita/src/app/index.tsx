@@ -1,38 +1,55 @@
 // app/index.tsx
-import React, { useState } from 'react'
-import { 
-  View, 
-  Text, 
-  Image, 
-  StyleSheet, 
-  TextInput, 
-  Pressable,
-  Alert 
-} from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import FadeInView from '@/components/FadeInView'
+import { useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { supabase } from './lib/supabase'
+
 
 const Index = () => {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mostrarPassword, setMostrarPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
-    // ✅ Demo: acepta cualquier cosa
-    // Solo mostramos un mensaje y redirigimos
-    Alert.alert('Éxito', 'Inicio de sesión exitoso (Demo)')
-    router.replace('/pantalla1')
+  const handleLogin = async () => {
+
+    if (!email || !password) {
+      Alert.alert('Error', 'Por favor ingresa tu correo y contraseña')
+      return
+    }
+    setLoading(true)
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      Alert.alert('Error al iniciar sesión', error.message)
+      setLoading(false)
+    } else {
+      setLoading(false)
+      router.push('/pantalla1')
+    }
+
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <FadeInView>
         <View style={styles.content}>
           
-          <Text style={styles.title}>Bienvenido</Text>
+          <Text style={styles.title}>App Sta. Teresita</Text>
           <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
           {/* Campo de correo */}
@@ -76,20 +93,19 @@ const Index = () => {
           {/* Botón de inicio de sesión */}
           <Pressable 
             onPress={handleLogin}
+            disabled={loading}
             style={({ pressed }) => [
               styles.loginButton,
-              pressed && styles.buttonPressed
+              (pressed || loading) && styles.buttonPressed
             ]}
           >
-            <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+            )}
           </Pressable>
-
-          {/* Texto informativo de demo */}
-          <Text style={styles.demoText}>
-            🚀 Demo: ingresa cualquier correo y contraseña
-          </Text>
         </View>
-      </FadeInView>
     </SafeAreaView>
   )
 }
