@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { supabase } from './lib/supabase'
+import { supabase } from '../lib/supabase'
 
 
 const Index = () => {
@@ -40,7 +40,8 @@ const Index = () => {
       setLoading(false)
     } else {
       setLoading(false)
-      router.push('/pantalla1')
+      router.replace('./(tabs)/home');
+
     }
 
   }
@@ -176,12 +177,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
-  },
-  demoText: {
-    marginTop: 20,
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
   },
 })
 

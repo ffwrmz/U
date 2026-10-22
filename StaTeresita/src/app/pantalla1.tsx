@@ -1,14 +1,17 @@
 // app/pantalla1.tsx
-import React, { useState } from 'react'
-import { 
-  View, Text, StyleSheet, FlatList, 
-  TextInput, Pressable, Image 
-} from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import Header from '@/components/Header'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import FadeInView from '@/components/FadeInView'
-import Header from '@/components/Header'
+import { useState } from 'react'
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 // 📊 Datos de ejemplo (demo)
 const CLIENTES_DEMO = [
@@ -118,7 +121,6 @@ const Pantalla1 = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FadeInView>
         <Header title="Clientes" />
 
         {/* Barra de búsqueda */}
@@ -160,7 +162,6 @@ const Pantalla1 = () => {
             </View>
           }
         />
-      </FadeInView>
     </SafeAreaView>
   )
 }

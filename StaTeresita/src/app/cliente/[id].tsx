@@ -1,13 +1,18 @@
 // app/cliente/[id].tsx
-import React, { useState } from 'react'
-import { 
-  View, Text, StyleSheet, ScrollView, 
-  Pressable, Alert, TextInput 
+import { Ionicons } from '@expo/vector-icons'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useState } from 'react'
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Ionicons } from '@expo/vector-icons'
-import { useRouter, useLocalSearchParams } from 'expo-router'
-import FadeInView from '@/components/FadeInView'
+
 
 // 📊 Datos de ejemplo - SOLO CUOTAS PAGADAS
 const CUOTAS_DEMO = [
@@ -71,7 +76,6 @@ const ClienteDetalle = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <FadeInView>
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
@@ -260,7 +264,7 @@ const ClienteDetalle = () => {
           {/* Espacio al final */}
           <View style={{ height: 20 }} />
         </ScrollView>
-      </FadeInView>
+
     </SafeAreaView>
   )
 }
