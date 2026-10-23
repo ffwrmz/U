@@ -1,11 +1,31 @@
 import Header from '@/components/Header'
+import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
+import { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 const HomeScreen = () => {
 
   const router = useRouter()
+  const [rolUsuario, setRolUsuario] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    const obtenerRol = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('perfiles')
+          .select('rol')
+          .eq('id', user.id)
+          .single();
+        
+        if (data) setRolUsuario(data.rol);
+      }
+    };
+    obtenerRol();
+  }, []);
   
   return (
     
@@ -61,6 +81,26 @@ const HomeScreen = () => {
           </View>
           <Ionicons name="chevron-forward" size={24} color="#ccc" />
         </Pressable>
+
+
+
+        {/* Ver Historial (PBI-03) */}
+
+        {rolUsuario === 'dueno' && (
+          <Pressable 
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => router.push('../ver-historial')}  
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#fef3c7' }]}>
+              <Ionicons name="time-outline" size={32} color="#f59e0b" />
+            </View>
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>Ver Historial</Text>
+              <Text style={styles.cardDescription}>Consultar registros anteriores</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#ccc" />
+          </Pressable>
+        )}
 
       </View>
     </View>

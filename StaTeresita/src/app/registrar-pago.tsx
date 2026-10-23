@@ -61,7 +61,6 @@ const RegistrarPago = () => {
   }, [])
 
   const guardarPago = async () => {
-    // Quitamos los puntos antes de convertirlo a número para guardarlo en BD
     const abono = parseFloat(monto.replace(/\./g, ''))
     
     if (!abono || !ventaSeleccionada) {
