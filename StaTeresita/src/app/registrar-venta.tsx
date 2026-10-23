@@ -22,7 +22,7 @@ const RegistrarVenta = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState<Cliente | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
   const [cargandoClientes, setCargandoClientes] = useState(true)
-
+  const [descripcion, setDescripcion] = useState('')
 
   useEffect(() => {
     const obtenerClientes = async () => {
@@ -44,11 +44,20 @@ const RegistrarVenta = () => {
     obtenerClientes()
   }, [])
 
+
+  // Manejar los miles
+  const manejarMonto = (texto: string) => {
+    const numero = texto.replace(/\D/g, '')
+    const formateado = numero.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+    setMonto(formateado)
+  }
+
   const guardarVenta = async () => {
-    if (!monto || !clienteSeleccionado) {
-      Alert.alert('Error', 'Por favor ingresa el monto y selecciona un cliente')
+    if (!monto || !clienteSeleccionado || !descripcion) {
+      Alert.alert('Error', 'Por favor ingresa el monto, selecciona un cliente y describe el pedido')
       return
     }
+
 
     setLoading(true)
     try {
@@ -60,23 +69,32 @@ const RegistrarVenta = () => {
         return
       }
 
+
+
+
+      const montoLimpio = Number(monto.replace(/\D/g, ''))
       const { error } = await supabase
         .from('ventas_pedidos')
         .insert([
           {
-            monto_total: parseFloat(monto),
-            saldo_pendiente: parseFloat(monto),
+            monto_total: montoLimpio,
+            saldo_pendiente: montoLimpio,
             vendedor_id: user.id,
-            cliente_id: clienteSeleccionado.id
+            cliente_id: clienteSeleccionado.id,
+            descripcion: descripcion
           }
         ])
 
       if (error) throw error
 
+
       Alert.alert('Éxito', 'Venta registrada correctamente')
       setMonto('')
+      setDescripcion('')
       setClienteSeleccionado(null)
       router.back()
+
+
     } catch (error: any) {
       Alert.alert('Error al guardar', error.message)
     } finally {
@@ -86,23 +104,30 @@ const RegistrarVenta = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+
       <Header title="Registrar Venta" />
 
       <View style={styles.form}>
 
         <Text style={styles.label}>Cliente</Text>
-        <Pressable
-          style={styles.selectorContainer}
-          onPress={() => setModalVisible(true)}
-        >
+        <Pressable style={styles.selectorContainer} onPress={() => setModalVisible(true)}>
           <Text style={[styles.selectorText, !clienteSeleccionado && styles.placeholderText]}>
             {clienteSeleccionado ? clienteSeleccionado.nombre : 'Seleccionar cliente...'}
           </Text>
           <Ionicons name="chevron-down" size={20} color="#666" />
         </Pressable>
 
+        <Text style={styles.label}>Descripción (Ej. Silla de oficina)</Text>
+        <TextInput 
+        style={styles.inputContainer} 
+        value={descripcion} 
+        onChangeText={setDescripcion} 
+        placeholder="¿Qué compró?" />
+
 
         <Text style={styles.label}>Monto Total del Pedido</Text>
+
+
         <View style={styles.inputContainer}>
           <Text style={styles.currency}>$</Text>
           <TextInput
@@ -110,9 +135,8 @@ const RegistrarVenta = () => {
             placeholder="0"
             keyboardType="numeric"
             value={monto}
-            onChangeText={setMonto}
-            editable={!loading}
-          />
+            onChangeText={manejarMonto}
+            editable={!loading}/>
         </View>
 
         <Pressable

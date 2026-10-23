@@ -50,7 +50,7 @@ const HomeScreen = () => {
         {/* Botón Registrar Pago (PBI-02) */}
         <Pressable 
           style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => console.log('Navegar a Registrar Pago')}
+          onPress={() => router.push('../registrar-pago')}
         >
           <View style={[styles.iconContainer, { backgroundColor: '#dcfce7' }]}>
             <Ionicons name="cash-outline" size={32} color="#10b981" />
