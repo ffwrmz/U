@@ -4,6 +4,7 @@ import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Header from '../components/Header'
 import { supabase } from '../lib/supabase'
+import { Palette } from '@/constants/palette'
 
 const RegistrarCliente = () => {
   const router = useRouter()
@@ -66,7 +67,7 @@ const RegistrarCliente = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header title="Nuevo Cliente"/>
 
       <View style={styles.form}>
@@ -76,6 +77,7 @@ const RegistrarCliente = () => {
           value={nombre} 
           onChangeText={setNombre} 
           placeholder="Ej. Juan Pérez" 
+          placeholderTextColor={Palette.textFaint}
           editable={!loading}
         />
 
@@ -85,6 +87,7 @@ const RegistrarCliente = () => {
           value={rut} 
           onChangeText={setRut} 
           placeholder="Ej. 12345678-9" 
+          placeholderTextColor={Palette.textFaint}
           editable={!loading}
         />
 
@@ -95,6 +98,7 @@ const RegistrarCliente = () => {
           onChangeText={setTelefono} 
           placeholder="Ej. +56 9 1234 5678" 
           keyboardType="phone-pad" 
+          placeholderTextColor={Palette.textFaint}
           editable={!loading}
         />
 
@@ -104,6 +108,7 @@ const RegistrarCliente = () => {
           value={direccion} 
           onChangeText={setDireccion} 
           placeholder="Ej. Calle Principal 123" 
+          placeholderTextColor={Palette.textFaint}
           editable={!loading}
         />
 
@@ -122,30 +127,31 @@ const RegistrarCliente = () => {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Palette.cream },
   form: { padding: 24 },
-  label: { fontSize: 16, color: '#333', marginBottom: 8, fontWeight: '500' },
+  label: { fontSize: 14, color: Palette.text, marginBottom: 6, fontWeight: '600' },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: Palette.card,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    borderColor: Palette.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     height: 52,
-    marginBottom: 20,
+    marginBottom: 18,
     fontSize: 16,
+    color: Palette.text,
   },
   submitButton: {
-    backgroundColor: '#be4bc2',
+    backgroundColor: Palette.navy,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 12,
   },
   submitButtonDisabled: {
-    backgroundColor: '#d894df',
+    backgroundColor: '#8C90B5',
   },
-  submitButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  submitButtonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
 })
 
 export default RegistrarCliente

@@ -1,20 +1,23 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Header from '../components/Header'
 import { supabase } from '../lib/supabase'
+import { Palette } from '@/constants/palette'
 
 interface VentaPendiente {
   id: string
   saldo_pendiente: number
   descripcion: string
+  cliente_id?: string
   clientes: { nombre: string } | null
 }
 
 const RegistrarPago = () => {
   const router = useRouter()
+  const { clienteId } = useLocalSearchParams<{ clienteId?: string }>()
   const [monto, setMonto] = useState('')
   const [loading, setLoading] = useState(false)
   
@@ -43,6 +46,7 @@ const RegistrarPago = () => {
             id,
             saldo_pendiente,
             descripcion,
+            cliente_id,
             clientes ( nombre )
           `)
           .gt('saldo_pendiente', 0)
@@ -50,7 +54,12 @@ const RegistrarPago = () => {
 
         if (error) throw error
         // @ts-ignore
-        if (data) setVentasPendientes(data)
+        if (data) {
+          // Si venimos desde un cliente de la lista, mostramos solo sus deudas
+          const lista = clienteId ? (data as any[]).filter((v) => v.cliente_id === clienteId) : (data as any[])
+          setVentasPendientes(lista)
+          if (clienteId && lista.length === 1) setVentaSeleccionada(lista[0])
+        }
       } catch (error) {
         console.error('Error al cargar deudas:', error)
       } finally {
@@ -111,7 +120,7 @@ const RegistrarPago = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header title="Registrar Pago" />
 
       <View style={styles.form}>
@@ -122,7 +131,7 @@ const RegistrarPago = () => {
               ? `${ventaSeleccionada.clientes?.nombre}- ${ventaSeleccionada.descripcion} (Debe: $${formatearMoneda(ventaSeleccionada.saldo_pendiente)})` 
               : 'Seleccionar deuda...'}
           </Text>
-          <Ionicons name="chevron-down" size={20} color="#666" />
+          <Ionicons name="chevron-down" size={20} color={Palette.textMuted} />
         </Pressable>
 
         <Text style={styles.label}>Monto a Abonar</Text>
@@ -131,6 +140,7 @@ const RegistrarPago = () => {
           <TextInput
             style={styles.input}
             placeholder="0"
+            placeholderTextColor={Palette.textFaint}
             keyboardType="numeric"
             value={monto}
             onChangeText={manejarCambioMonto}
@@ -154,12 +164,12 @@ const RegistrarPago = () => {
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Deudas Pendientes</Text>
             <Pressable onPress={() => setModalVisible(false)} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#1a1a1a" />
+              <Ionicons name="close" size={24} color={Palette.text} />
             </Pressable>
           </View>
 
           {cargandoVentas ? (
-            <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 20 }} />
+            <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 20 }} />
           ) : (
             <FlatList
               data={ventasPendientes}
@@ -179,7 +189,7 @@ const RegistrarPago = () => {
 
                     <Text style={styles.ventaSaldo}>Deuda: ${formatearMoneda(item.saldo_pendiente)}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#ccc" />
+                  <Ionicons name="chevron-forward" size={20} color={Palette.textFaint} />
                 </Pressable>
               )}
             />
@@ -191,35 +201,35 @@ const RegistrarPago = () => {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: Palette.cream },
   form: { padding: 24 },
-  label: { fontSize: 16, color: '#333', marginBottom: 8, fontWeight: '500' },
+  label: { fontSize: 14, color: Palette.text, marginBottom: 6, fontWeight: '600' },
   selectorContainer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8,
-    paddingHorizontal: 12, height: 56, marginBottom: 24,
+    backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12,
+    paddingHorizontal: 14, height: 56, marginBottom: 20,
   },
-  selectorText: { fontSize: 16, color: '#000' },
-  placeholderText: { color: '#999' },
+  selectorText: { fontSize: 16, color: Palette.text, flex: 1, marginRight: 8 },
+  placeholderText: { color: Palette.textFaint },
   inputContainer: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 12,
-    height: 56, marginBottom: 24,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Palette.card,
+    borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14,
+    height: 56, marginBottom: 20, fontSize: 16, color: Palette.text,
   },
-  currency: { fontSize: 18, color: '#666', marginRight: 8 },
-  input: { flex: 1, fontSize: 18, color: '#000' },
-  submitButton: { backgroundColor: '#10b981', padding: 16, borderRadius: 12, alignItems: 'center' },
-  submitButtonDisabled: { backgroundColor: '#6ee7b7' },
-  submitButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  modalContainer: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  currency: { fontSize: 18, color: Palette.textMuted, marginRight: 8 },
+  input: { flex: 1, fontSize: 18, color: Palette.text },
+  submitButton: { backgroundColor: Palette.navy, padding: 16, borderRadius: 12, alignItems: 'center' },
+  submitButtonDisabled: { backgroundColor: '#8C90B5' },
+  submitButtonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
+  modalContainer: { flex: 1, backgroundColor: Palette.cream },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: Palette.text },
   closeButton: { padding: 4 },
   listContainer: { padding: 16 },
-  ventaItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  ventaNombre: { fontSize: 16, color: '#333', fontWeight: 'bold' },
-  ventaSaldo: { fontSize: 14, color: '#e63946', marginTop: 4 },
-  emptyText: { textAlign: 'center', color: '#666', marginTop: 20 },
+  ventaItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
+  ventaNombre: { fontSize: 16, color: Palette.text, fontWeight: '700' },
+  ventaSaldo: { fontSize: 14, color: Palette.orange, marginTop: 4, fontWeight: '600' },
+  emptyText: { textAlign: 'center', color: Palette.textMuted, marginTop: 20 },
 })
 
 export default RegistrarPago

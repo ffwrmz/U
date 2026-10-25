@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Palette } from '@/constants/palette'
 
 
 interface HeaderProps {
@@ -9,6 +11,7 @@ interface HeaderProps {
 
 const Header = (props: HeaderProps) => {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
 
   const volver = () => {
     if (router.canGoBack()) { 
@@ -23,19 +26,16 @@ const Header = (props: HeaderProps) => {
   }
 
   return (
-    <View style={styles.header}>
-      <Pressable onPress={volver}>
-        <Ionicons size={28} color='#be4bc2' name='arrow-back-outline' />
+    <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <Pressable onPress={volver} style={styles.iconButton}>
+        <Ionicons size={22} color={Palette.onNavy} name='arrow-back-outline' />
       </Pressable>
 
-      <Text>{props.title}</Text>
-      <Text></Text>
+      <Text style={styles.title}>{props.title}</Text>
 
-      <Pressable onPress={cerrarSesion}>
-        <Ionicons size={28} color='#be4bc2' name='log-out-outline' />
+      <Pressable onPress={cerrarSesion} style={styles.iconButton}>
+        <Ionicons size={22} color={Palette.onNavy} name='log-out-outline' />
       </Pressable>
-
-      
     </View>
   )
 }
@@ -46,11 +46,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 14,
-    backgroundColor: '#f5f5f5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0'
-  }
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: Palette.navy,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Palette.onNavyFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Palette.onNavy,
+  },
 })
 
 export default Header

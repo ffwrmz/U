@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { Palette } from '@/constants/palette';
 
 export default function TabLayout() {
   return (
     <Tabs 
       screenOptions={{ 
-        tabBarActiveTintColor: '#6366f1',
+        tabBarActiveTintColor: Palette.navy,
         headerShown: false,
         tabBarStyle: {
           elevation: 0,
@@ -24,7 +25,7 @@ export default function TabLayout() {
         name="home/index"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color="#6366f1" />,
+          tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={24} color={color} />,
         }}
       />
     </Tabs>
