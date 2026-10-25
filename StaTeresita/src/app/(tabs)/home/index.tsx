@@ -152,16 +152,17 @@ const HomeScreen = () => {
                 */}
               </View>
             </>
-          ) : rolUsuario ? (
+          ) : null
+          /* Recuadro "Cobranza" del casero (comentado por ahora)
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Cobranza</Text>
-            <Text style={styles.summaryBig}>{conDeuda} de {clientes.length} clientes con deuda</Text>
+            <Text style={styles.summaryBig}>{conDeuda} de {clientes.length} clientes por visitar</Text>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${progreso * 100}%` }]} />
             </View>
             <Text style={styles.summarySmall}>Por cobrar: {clp(totalPorCobrar)}</Text>
           </View>
-          ) : null}
+          */}
         </View>
 
         <View style={styles.actionsContainer}>
@@ -198,6 +199,8 @@ const HomeScreen = () => {
               <Text style={styles.quickText}>Ver clientes</Text>
             </Pressable>
 
+            {/* Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente) */}
+            {!soyGerente && (
             <Pressable
               style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
               onPress={() => router.push('../registrar-pago')}
@@ -207,6 +210,7 @@ const HomeScreen = () => {
               </View>
               <Text style={styles.quickText}>Registrar pago</Text>
             </Pressable>
+            )}
 
             {rolUsuario === 'dueno' && (
               <Pressable

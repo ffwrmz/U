@@ -25,10 +25,9 @@ const fechaPago = (p: Pago) => p.fecha_pago ?? p.creado_en
 
 // Columnas de la tarjeta (como la de papel, más producto y forma de pago)
 const COLUMNAS: { t: string; f: number; num?: boolean }[] = [
-  { t: 'Fecha', f: 1.05 },
-  { t: 'Producto', f: 1.7 },
-  { t: 'Abono', f: 1.1, num: true },
-  { t: 'Saldo', f: 1.1, num: true },
+  { t: 'Fecha', f: 1 },
+  { t: 'Abono', f: 1.2, num: true },
+  { t: 'Saldo', f: 1.2, num: true },
   { t: 'Pago', f: 1 },
 ]
 
@@ -52,6 +51,7 @@ const HistorialCliente = () => {
   const [monto, setMonto] = useState('')
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [guardando, setGuardando] = useState(false)
+  const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
 
   const cargar = useCallback(async () => {
     {
@@ -89,15 +89,18 @@ const HistorialCliente = () => {
   const abonado = Math.max(totalComprado - deuda, 0)
 
   // El abono se aplica primero a la compra más antigua que aún tenga saldo (FIFO)
-  const pendientes = vigentes.filter((v) => Number(v.saldo_pendiente) > 0)
+  const fifo = vigentes.filter((v) => Number(v.saldo_pendiente) > 0)
     .sort((a, b) => String(a.fecha_venta ?? '').localeCompare(String(b.fecha_venta ?? '')))
+  // Si se abona a una compra concreta, solo se usa esa; si no, van por orden de antigüedad
+  const pendientes = destino ? fifo.filter((v) => v.id === destino.id) : fifo
+  const maximo = pendientes.reduce((n, v) => n + Number(v.saldo_pendiente), 0)
 
-  const abrirPago = () => { setMonto(''); setMetodo('efectivo'); setModalPago(true) }
+  const abrirPago = (v?: Venta) => { setDestino(v ?? null); setMonto(''); setMetodo('efectivo'); setModalPago(true) }
 
   const guardarPago = async () => {
     const abono = parseInt(monto.replace(/\D/g, ''), 10) || 0
     if (abono <= 0) { Alert.alert('Error', 'Ingresa un monto mayor a 0'); return }
-    if (abono > deuda) { Alert.alert('Error', `El abono no puede superar la deuda (${clp(deuda)})`); return }
+    if (abono > maximo) { Alert.alert('Error', `El abono no puede superar la deuda (${clp(maximo)})`); return }
     setGuardando(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -126,6 +129,27 @@ const HistorialCliente = () => {
       cargar()
     }
   }
+
+  // Todo lo que se muestra de una compra (producto, colores, progreso y abonos)
+  const datosDe = (v: Venta) => {
+    const total = Number(v.monto_total)
+    const anulada = v.estado_pago === 'anulada'
+    const pagada = Number(v.saldo_pendiente) <= 0
+    const color = anulada ? Palette.textMuted : pagada ? Palette.green : Palette.amber
+    const fondo = anulada ? Palette.grayPill : pagada ? Palette.greenSoft : Palette.amberSoft
+    const items = lineas.filter((l) => l.venta_pedido_id === v.id)
+    const nombre = items.length > 0 ? items.map((l) => `${l.cantidad} × ${l.productos?.nombre ?? 'Producto'}`).join(', ') : v.descripcion || 'Compra'
+    const pagos = (v.pagos || []).slice().sort((a, b) => String(fechaPago(a) ?? '').localeCompare(String(fechaPago(b) ?? '')))
+    let acumulado = 0
+    const filas = pagos.map((p) => {
+      acumulado += Number(p.monto_abonado)
+      return { fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
+    }).reverse()
+    const pagado = Math.max(total - Number(v.saldo_pendiente), 0)
+    const pct = total > 0 ? Math.min(pagado / total, 1) : 0
+    return { total, anulada, pagada, color, fondo, nombre, filas, pagado, pct }
+  }
+  const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
 
   const estadoDe = (v: Venta) => {
     if (v.estado_pago === 'anulada') return { texto: 'Anulada', fondo: Palette.grayPill, color: Palette.textMuted }
@@ -165,75 +189,87 @@ const HistorialCliente = () => {
             </View>
           </View>
 
-          {deuda > 0 && (
-            <Pressable style={styles.botonPagar} onPress={abrirPago}>
-              <Ionicons name="cash-outline" size={20} color={Palette.onNavy} />
-              <Text style={styles.botonPagarText}>Registrar pago</Text>
+          <View style={styles.accionesFila}>
+            <Pressable
+              style={({ pressed }) => [styles.accion, { backgroundColor: Palette.navy }, pressed && { opacity: 0.85 }]}
+              onPress={() => router.push({ pathname: '/registrar-venta', params: { clienteId: id } } as any)}
+            >
+              <Ionicons name="cart-outline" size={20} color={Palette.onNavy} />
+              <Text style={styles.accionText}>Agregar venta</Text>
             </Pressable>
-          )}
+            <Pressable
+              style={({ pressed }) => [styles.accion, deuda > 0 ? { backgroundColor: Palette.orange } : styles.accionOff, pressed && deuda > 0 && { opacity: 0.85 }]}
+              disabled={deuda <= 0}
+              onPress={() => abrirPago()}
+            >
+              <Ionicons name="cash-outline" size={20} color={deuda > 0 ? Palette.onNavy : Palette.textFaint} />
+              <Text style={[styles.accionText, deuda <= 0 && { color: Palette.textFaint }]}>{deuda > 0 ? 'Agregar pago' : 'Sin deuda'}</Text>
+            </Pressable>
+          </View>
 
-          <Text style={styles.seccion}>Tarjeta de pagos</Text>
+          <Text style={styles.seccion}>Compras ({ventas.length})</Text>
           {ventas.length === 0 && <Text style={styles.vacio}>Este cliente aún no tiene compras.</Text>}
 
-          {ventas.length > 0 && (
-            <>
-              <View style={styles.leyenda}>
-                <View style={[styles.punto, { backgroundColor: Palette.green }]} /><Text style={styles.leyendaText}>Pagada</Text>
-                <View style={[styles.punto, { backgroundColor: Palette.amber }]} /><Text style={styles.leyendaText}>Pagando</Text>
-                <Ionicons name="cash-outline" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Efectivo</Text>
-                <Ionicons name="swap-horizontal" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Transferencia</Text>
-              </View>
+          {ventas.map((v) => {
+            const d = datosDe(v)
+            const abierta = !!abiertas[v.id]
+            return (
+              <View key={v.id} style={[styles.itemCard, { borderLeftColor: d.color }]}>
+                <Pressable style={styles.item} onPress={() => setAbiertas((a) => ({ ...a, [v.id]: !a[v.id] }))}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <Text style={styles.itemNombre} numberOfLines={abierta ? undefined : 2}>{d.nombre}</Text>
+                    <View style={styles.barra}>
+                      <View style={[styles.barraRelleno, { width: `${d.pct * 100}%`, backgroundColor: d.color }]} />
+                    </View>
+                    <Text style={styles.sub}>{fechaCorta(v.fecha_venta) || '—'} · {clp(d.total)}</Text>
+                  </View>
+                  <View style={[styles.estadoPill, { backgroundColor: d.fondo }]}>
+                    <Text style={[styles.estadoPillText, { color: d.color }]}>
+                      {d.anulada ? 'Anulada' : d.pagada ? 'Pagado ✓' : `Debe ${clp(Number(v.saldo_pendiente))}`}
+                    </Text>
+                  </View>
+                  <Ionicons name={abierta ? 'chevron-up' : 'chevron-down'} size={20} color={Palette.navy} />
+                </Pressable>
 
-              <View style={styles.matriz}>
-                <View style={[styles.fila, styles.filaHead]}>
-                  {COLUMNAS.map((c, k) => (
-                    <Text key={c.t} style={[styles.celda, styles.celdaHead, { flex: c.f }, c.num && styles.celdaNum, k === COLUMNAS.length - 1 && styles.celdaUltima]}>{c.t}</Text>
-                  ))}
-                </View>
+                {abierta && (
+                  <View style={[styles.desplegado, { backgroundColor: d.fondo }]}>
+                    <Text style={styles.bannerSub}>Pagado {clp(d.pagado)} de {clp(d.total)} · {Math.round(d.pct * 100)}%</Text>
 
-                {ventas.map((v) => {
-                  const total = Number(v.monto_total)
-                  const anulada = v.estado_pago === 'anulada'
-                  const pagada = Number(v.saldo_pendiente) <= 0
-                  const color = anulada ? Palette.textMuted : pagada ? Palette.green : Palette.amber
-                  const fondo = anulada ? Palette.grayPill : pagada ? Palette.greenSoft : Palette.amberSoft
-                  const items = lineas.filter((l) => l.venta_pedido_id === v.id)
-                  const nombre = items.length > 0
-                    ? items.map((l) => `${l.cantidad} × ${l.productos?.nombre ?? 'Producto'}`).join(', ')
-                    : v.descripcion || 'Compra'
-                  const pagos = (v.pagos || []).slice().sort((a, b) => String(fechaPago(a) ?? '').localeCompare(String(fechaPago(b) ?? '')))
-                  let acumulado = 0
-                  const filas = pagos.length > 0
-                    ? pagos.map((p) => {
-                        acumulado += Number(p.monto_abonado)
-                        return { fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
-                      }).reverse()
-                    : [{ fecha: fechaCorta(v.fecha_venta) || '', abono: '', saldo: clp(total), metodo: null, quien: '' }]
-                  return (
-                    <Pressable
-                      key={v.id}
-                      style={[styles.grupo, { backgroundColor: fondo, borderLeftColor: color }]}
-                      onPress={() => router.push({ pathname: '/compra/[id]', params: { id: v.id } } as any)}
-                    >
-                      {filas.map((f, n) => (
-                        <View key={n} style={[styles.fila, n > 0 && styles.filaInterna]}>
+                    {!d.anulada && !d.pagada && (
+                      <Pressable style={styles.botonAbonar} onPress={() => abrirPago(v)}>
+                        <Ionicons name="add-circle-outline" size={16} color={Palette.onNavy} />
+                        <Text style={styles.botonAbonarText}>Abonar a esta compra</Text>
+                      </Pressable>
+                    )}
+
+                    <View style={styles.matriz}>
+                      <View style={[styles.fila, styles.filaHead]}>
+                        {COLUMNAS.map((c, k) => (
+                          <Text key={c.t} style={[styles.celda, styles.celdaHead, { flex: c.f }, c.num && styles.celdaNum, k === COLUMNAS.length - 1 && styles.celdaUltima]}>{c.t}</Text>
+                        ))}
+                      </View>
+                      {d.filas.length === 0 && <Text style={[styles.celda, { textAlign: 'center' }]}>Todavía no hay abonos.</Text>}
+                      {d.filas.map((f, n) => (
+                        <View key={n} style={[styles.fila, styles.filaInterna]}>
                           <Text style={[styles.celda, { flex: COLUMNAS[0].f }]}>{f.fecha}</Text>
-                          <Text style={[styles.celda, styles.celdaProducto, { flex: COLUMNAS[1].f, color }]} numberOfLines={3}>{n === 0 ? nombre : ''}</Text>
-                          <Text style={[styles.celda, styles.celdaNum, { flex: COLUMNAS[2].f }]}>{f.abono}</Text>
-                          <Text style={[styles.celda, styles.celdaNum, styles.celdaSaldo, { flex: COLUMNAS[3].f }]}>{f.saldo}</Text>
-                          <View style={[styles.celda, styles.celdaUltima, { flex: COLUMNAS[4].f, alignItems: 'center' }]}>
+                          <Text style={[styles.celda, styles.celdaNum, { flex: COLUMNAS[1].f }]}>{f.abono}</Text>
+                          <Text style={[styles.celda, styles.celdaNum, styles.celdaSaldo, { flex: COLUMNAS[2].f }]}>{f.saldo}</Text>
+                          <View style={[styles.celda, styles.celdaUltima, { flex: COLUMNAS[3].f, alignItems: 'center' }]}>
                             {f.metodo ? <Ionicons name={f.metodo === 'transferencia' ? 'swap-horizontal' : 'cash-outline'} size={18} color={Palette.navy} /> : null}
                             {!!f.quien && <Text style={styles.quien} numberOfLines={1}>{f.quien}</Text>}
                           </View>
                         </View>
                       ))}
-                    </Pressable>
-                  )
-                })}
+                    </View>
+                    <View style={styles.leyenda}>
+                      <Ionicons name="cash-outline" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Efectivo</Text>
+                      <Ionicons name="swap-horizontal" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Transferencia</Text>
+                    </View>
+                  </View>
+                )}
               </View>
-              <Text style={styles.cardHintMini}>Toca una compra para ver su detalle.</Text>
-            </>
-          )}
+            )
+          })}
         </ScrollView>
       )}
 
@@ -245,7 +281,16 @@ const HistorialCliente = () => {
           </View>
           <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.pagoCliente}>{cliente?.nombre}</Text>
-            <Text style={styles.sub}>Debe en total: <Text style={styles.negrita}>{clp(deuda)}</Text></Text>
+            {destino ? (
+              <>
+                <Text style={styles.sub} numberOfLines={2}>
+                  Compra: <Text style={styles.negrita}>{lineas.filter((l) => l.venta_pedido_id === destino.id).map((l) => `${l.cantidad} × ${l.productos?.nombre ?? 'Producto'}`).join(', ') || destino.descripcion || 'Compra'}</Text>
+                </Text>
+                <Text style={styles.sub}>Debe en esta compra: <Text style={styles.negrita}>{clp(maximo)}</Text></Text>
+              </>
+            ) : (
+              <Text style={styles.sub}>Debe en total: <Text style={styles.negrita}>{clp(deuda)}</Text></Text>
+            )}
 
             <Text style={styles.label}>Monto a abonar</Text>
             <View style={styles.inputWrap}>
@@ -264,7 +309,9 @@ const HistorialCliente = () => {
               ))}
             </View>
 
-            <Text style={styles.nota}>El abono se descuenta primero de la compra más antigua que todavía tenga saldo.</Text>
+            <Text style={styles.nota}>
+              {destino ? 'El abono se aplica solo a esta compra.' : 'El abono se descuenta primero de la compra más antigua que todavía tenga saldo.'}
+            </Text>
 
             <Pressable style={[styles.botonGuardar, guardando && { opacity: 0.6 }]} onPress={guardarPago} disabled={guardando}>
               <Text style={styles.botonPagarText}>{guardando ? 'Guardando...' : 'Guardar pago'}</Text>
@@ -294,6 +341,27 @@ const styles = StyleSheet.create({
   resumenLabel: { fontSize: 11, fontWeight: '600', color: Palette.textMuted, marginBottom: 4 },
   resumenValor: { fontSize: 16, fontWeight: '800', color: Palette.text },
   seccion: { fontSize: 13, fontWeight: '700', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 6 },
+  accionesFila: { flexDirection: 'row', gap: 10 },
+  accion: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 14 },
+  accionOff: { backgroundColor: Palette.grayPill },
+  accionText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },
+  botonAbonar: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  botonAbonarText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
+  itemCard: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, borderLeftWidth: 5, overflow: 'hidden' },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  desplegado: { padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: Palette.border },
+  itemNombre: { fontSize: 15, fontWeight: '800', color: Palette.text },
+  estadoPill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
+  estadoPillText: { fontSize: 12, fontWeight: '800' },
+  detalleTop: { borderRadius: 16, borderWidth: 2, padding: 14, gap: 8 },
+  detalleSaldo: { fontSize: 20, fontWeight: '800' },
+  banner: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8, gap: 6 },
+  bannerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  bannerProducto: { flex: 1, fontSize: 15, fontWeight: '800' },
+  bannerEstado: { fontSize: 13, fontWeight: '800' },
+  barra: { height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
+  barraRelleno: { height: 8, borderRadius: 4 },
+  bannerSub: { fontSize: 12, color: Palette.textMuted },
   quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 60 },
   botonPagar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 14 },
   botonGuardar: { backgroundColor: Palette.navy, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },

@@ -4,7 +4,7 @@ import { esGerente } from '@/lib/demoJornada'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -38,6 +38,7 @@ const descuentoInvalido = (l: Linea) =>
 
 const RegistrarVenta = () => {
   const router = useRouter()
+  const { clienteId } = useLocalSearchParams<{ clienteId?: string }>() // viene de la ficha del cliente
   const [cargando, setCargando] = useState(true)
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -92,7 +93,12 @@ const RegistrarVenta = () => {
     ])
     const error = cs.error || ps.error || us.error || st.error
     setErrorCarga(error ? error.message : null)
-    setClientes((cs.data as Cliente[]) || [])
+    const listaClientes = (cs.data as Cliente[]) || []
+    setClientes(listaClientes)
+    if (clienteId) {
+      const elegido = listaClientes.find((c) => c.id === clienteId)
+      if (elegido) setCliente((actual) => actual ?? elegido)
+    }
     setProductos((ps.data as Producto[]) || [])
     const ubic = (us.data as Ubicacion[]) || []
     // Quien tiene un furgón asignado solo puede vender lo que lleva ese furgón
