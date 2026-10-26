@@ -48,6 +48,7 @@ const RegistrarVenta = () => {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
+  const [sinFurgon, setSinFurgon] = useState(false) // casero sin furgón asignado: no puede vender
   const [stock, setStock] = useState<StockFila[]>([])
   const [aprobadas, setAprobadas] = useState<Solicitud[]>([])
 
@@ -103,12 +104,14 @@ const RegistrarVenta = () => {
     const ubic = (us.data as Ubicacion[]) || []
     // Quien tiene un furgón asignado solo puede vender lo que lleva ese furgón
     const propia = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id) : undefined
-    setUbicaciones(propia ? [propia] : ubic)
+    // Un casero sin furgón asignado no puede vender (ni de bodega ni de otros furgones)
+    setSinFurgon(!gerente && !propia)
+    setUbicaciones(propia ? [propia] : gerente ? ubic : [])
     setStock((st.data as StockFila[]) || [])
     setAprobadas((sol.data as Solicitud[]) || [])
     // Por defecto: el furgón asignado al usuario; si no tiene, la bodega (gerente) o el primer furgón
     const propio = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id)?.id : undefined
-    setUbicacionId((actual) => actual ?? propio ?? (gerente ? ubic.find((u) => u.tipo === 'bodega')?.id : ubic.find((u) => u.tipo === 'furgon')?.id) ?? ubic[0]?.id ?? null)
+    setUbicacionId((actual) => actual ?? propio ?? (gerente ? (ubic.find((u) => u.tipo === 'bodega')?.id ?? ubic[0]?.id) : undefined) ?? null)
     setCargando(false)
   }
 
@@ -233,6 +236,11 @@ const RegistrarVenta = () => {
         <View style={styles.aviso}>
           <Ionicons name="warning-outline" size={22} color={Palette.amber} />
           <Text style={styles.avisoText}>No se pudo cargar: {errorCarga}</Text>
+        </View>
+      ) : sinFurgon ? (
+        <View style={styles.aviso}>
+          <Ionicons name="lock-closed-outline" size={22} color={Palette.amber} />
+          <Text style={styles.avisoText}>Todavía no tienes un furgón asignado, así que no puedes registrar ventas. Pídele al gerente que te asigne uno.</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
