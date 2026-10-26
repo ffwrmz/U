@@ -1,5 +1,5 @@
 import { Palette } from '@/constants/palette'
-import { caserosHoy, esGerente, store, textoEstado } from '@/lib/demoJornada'
+import { esGerente, store } from '@/lib/demoJornada'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -70,7 +70,7 @@ const HomeScreen = () => {
     }, [])
   )
 
-  // Iniciar / finalizar la jornada (solo apariencia: se guarda en memoria, no en Supabase)
+  // Iniciar / finalizar la jornada (solo apariencia: se guarda en memoria, no en Supabase) Se implementara cuando estemos trabajando con las rutas
   const cambiarEstado = (nuevo: 'en_curso' | 'finalizada') => {
     const iniciar = nuevo === 'en_curso'
     Alert.alert(
@@ -108,7 +108,7 @@ const HomeScreen = () => {
             <>
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-                {/* Botones Iniciar ruta / Finalizar ruta (desactivados por ahora)
+                {/* Botones Iniciar ruta / Finalizar ruta (desactivados por ahora) Se implementara cuando estemos trabajando con las rutas
                 {store.estado === 'preparacion' && (
                   <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('en_curso')}>
                     <Ionicons name="play" size={13} color={Palette.onNavy} />

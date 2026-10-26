@@ -1,3 +1,6 @@
+// Este archivo contiene la configuración, entendemos que son datos sensibles, sin embargo, es unicamente de prueba
+// En caso de quere escalar el proyecto esto se puede adaptar y poner en un archivo .env, para que no se exponga la información sensible.
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto'; // necesario en RN

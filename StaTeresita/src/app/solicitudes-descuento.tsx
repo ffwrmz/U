@@ -1,3 +1,4 @@
+// Este archivo no se encuentra implementado, puesto que es un complemento, se piensa trabajar para el siguiente sprint.
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { clp, fechaCorta } from '@/lib/format'
