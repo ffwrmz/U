@@ -1,8 +1,9 @@
 # Edge Function `gestionar-trabajador`
 
 Ya está **desplegada en Supabase** desde el conector de Supabase (verify_jwt activado).
-El código fuente no está en este repo; si se necesita cambiarla, hay que descargarla desde el panel
-de Supabase (Edge Functions) o pedir una copia del código.
+El código desplegado está en `index.ts` de esta carpeta. Para volver a desplegarla:
+`supabase functions deploy gestionar-trabajador`. La migración que la acompaña es
+`supabase/migrations/20261109162000_trabajadores.sql`.
 
 Solo la puede usar un usuario con rol `dueno`. La app la llama desde `src/app/trabajadores.tsx`:
 
