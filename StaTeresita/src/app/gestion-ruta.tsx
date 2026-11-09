@@ -3,8 +3,9 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
-  obtenerOCrearJornadaHoy, Parada, quitarParada, SELECT_CLIENTE, textoEstadoJornada,
+  comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
+import DireccionCliente from '@/components/DireccionCliente'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
@@ -24,17 +25,8 @@ const ORDENES: { k: Orden; t: string }[] = [
   { k: 'nombre', t: 'Nombre' },
 ]
 
-const comunaDe = (c: Cliente) => c.dir?.sector?.comuna?.nombre ?? ''
-const sectorDe = (c: Cliente) => c.dir?.sector?.nombre ?? ''
 // Una dirección se puede filtrar por su calle o por su pasaje
 const callesDe = (c: Cliente) => [c.dir?.calle?.nombre, c.dir?.pasaje?.nombre].filter(Boolean) as string[]
-// "Yerbas Buenas 123 (Pasaje Los Olivos)"
-const lineaDireccion = (c: Cliente) => {
-  if (!c.dir) return c.direccion ?? ''
-  const calle = [c.dir.calle?.nombre, c.dir.numero].filter(Boolean).join(' ')
-  return c.dir.pasaje ? `${calle} (${c.dir.pasaje.nombre})` : calle
-}
-const lineaZona = (c: Cliente) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
 const cmp = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
 const unicos = (l: string[]) => Array.from(new Set(l.filter(Boolean))).sort(cmp)
 
@@ -444,19 +436,6 @@ const GestionRuta = () => {
   )
 }
 
-// Dirección de un cliente: "Calle 123 (Pasaje)", "Sector · Comuna" e indicaciones
-const DireccionCliente = ({ c }: { c: Cliente }) => (
-  <View style={{ gap: 1 }}>
-    <View style={styles.dirRow}>
-      <Ionicons name="location-outline" size={13} color={Palette.textMuted} />
-      <Text style={styles.dirText} numberOfLines={1}>{lineaDireccion(c) || 'Sin dirección'}</Text>
-      {!c.dir && <View style={styles.sinZona}><Text style={styles.sinZonaText}>Sin zona</Text></View>}
-    </View>
-    {!!c.dir && <Text style={styles.zonaText} numberOfLines={1}>{lineaZona(c)}</Text>}
-    {!!c.dir?.referencia && <Text style={styles.referencia} numberOfLines={2}>{c.dir.referencia}</Text>}
-  </View>
-)
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 20, gap: 12 },
@@ -497,10 +476,6 @@ const styles = StyleSheet.create({
   opcionActiva: { borderColor: Palette.navy, backgroundColor: Palette.navySoft },
   boton: { backgroundColor: Palette.navy, padding: 16, borderRadius: 12, alignItems: 'center' },
   botonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
-  zonaText: { fontSize: 12, fontWeight: '600', color: Palette.navy, marginLeft: 17 },
-  referencia: { fontSize: 12, fontStyle: 'italic', color: Palette.textFaint, marginLeft: 17 },
-  sinZona: { backgroundColor: Palette.amberSoft, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
-  sinZonaText: { fontSize: 10, fontWeight: '800', color: Palette.amber },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, paddingHorizontal: 12, height: 36, maxWidth: 220 },
   chipActivo: { backgroundColor: Palette.navy, borderColor: Palette.navy },
   chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy, flexShrink: 1 },

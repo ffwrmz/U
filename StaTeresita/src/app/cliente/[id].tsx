@@ -5,11 +5,12 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
+import { abrirWhatsApp as abrirWhatsAppCon } from '@/lib/whatsapp'
 import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, validarDireccion } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 interface Cliente { id: string; nombre: string; rut: string | null; telefono: string | null; direccion: string | null }
@@ -223,19 +224,7 @@ const HistorialCliente = () => {
     }
   }
 
-  const abrirWhatsApp = async () => {
-    let numero = (cliente?.telefono ?? '').replace(/\D/g, '')
-    if (numero.length === 9) numero = '56' + numero // 9XXXXXXXX → 569XXXXXXXX
-    if (numero.length < 11) {
-      Alert.alert('WhatsApp', 'El cliente no tiene un teléfono válido.')
-      return
-    }
-    try {
-      await Linking.openURL(`whatsapp://send?phone=${numero}`)
-    } catch {
-      Alert.alert('WhatsApp', 'WhatsApp no está instalado en este teléfono.')
-    }
-  }
+  const abrirWhatsApp = () => abrirWhatsAppCon(cliente?.telefono)
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>

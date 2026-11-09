@@ -1,6 +1,6 @@
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
-import { cambiarEstadoJornada, Jornada, obtenerOCrearJornadaHoy } from '@/lib/rutas'
+import { cambiarEstadoJornada, Jornada, listarParadas, obtenerOCrearJornadaHoy, textoEstadoJornada } from '@/lib/rutas'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -24,6 +24,8 @@ const HomeScreen = () => {
   const [clientes, setClientes] = useState<ClienteFila[]>([])
   const [deudas, setDeudas] = useState<Record<string, number>>({})
   const [jornada, setJornada] = useState<Jornada | null>(null)
+  // Mi ruta de hoy (paradas asignadas a este usuario)
+  const [miRuta, setMiRuta] = useState<{ estado: Jornada['estado'] | null; total: number; pendientes: number }>({ estado: null, total: 0, pendientes: 0 })
   const soyGerente = esGerente(rolUsuario)
 
 
@@ -76,6 +78,23 @@ const HomeScreen = () => {
       if (!soyGerente) return
       obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => setJornada(null))
     }, [soyGerente])
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      const leer = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          const j = await obtenerOCrearJornadaHoy(false)
+          if (!user || !j) { setMiRuta({ estado: j?.estado ?? null, total: 0, pendientes: 0 }); return }
+          const ps = await listarParadas(j.id, user.id)
+          setMiRuta({ estado: j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+        } catch {
+          setMiRuta({ estado: null, total: 0, pendientes: 0 })
+        }
+      }
+      leer()
+    }, [])
   )
 
   // Iniciar / finalizar la jornada de hoy (se guarda en Supabase)
@@ -170,6 +189,25 @@ const HomeScreen = () => {
             <Text style={styles.summarySmall}>Por cobrar: {clp(totalPorCobrar)}</Text>
           </View>
           */}
+
+          {/* Mi ruta de hoy: el casero siempre; el gerente solo si también tiene paradas asignadas */}
+          {rolUsuario && (!soyGerente || miRuta.total > 0) && (
+            <Pressable
+              style={({ pressed }) => [styles.summaryCard, soyGerente && { marginTop: 12 }, pressed && styles.cardPressed]}
+              onPress={() => router.push('../mi-ruta')}
+            >
+              <View style={styles.sectionRow}>
+                <Text style={styles.summaryLabel}>Mi ruta de hoy · {textoEstadoJornada(miRuta.estado)}</Text>
+                <Ionicons name="chevron-forward" size={18} color={Palette.onNavyMuted} />
+              </View>
+              <Text style={styles.summaryBig}>
+                {miRuta.total === 0 ? 'Sin clientes asignados' : `${miRuta.pendientes} de ${miRuta.total} por visitar`}
+              </Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${miRuta.total ? ((miRuta.total - miRuta.pendientes) / miRuta.total) * 100 : 0}%` }]} />
+              </View>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.actionsContainer}>

@@ -15,7 +15,7 @@ export interface Dir {
   calle: { nombre: string } | null
   pasaje: { nombre: string } | null
 }
-export interface ClienteRuta { id: string; nombre: string; direccion: string | null; dir: Dir | null }
+export interface ClienteRuta { id: string; nombre: string; telefono?: string | null; direccion: string | null; dir: Dir | null }
 
 export interface Parada {
   id: string
@@ -30,7 +30,7 @@ export interface Parada {
 
 // Columnas de un cliente con su dirección por zonas (para usar dentro de un select)
 export const SELECT_CLIENTE =
-  'id, nombre, direccion, dir:direcciones ( numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
+  'id, nombre, telefono, direccion, dir:direcciones ( numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
 
 const SELECT_PARADA = `id, vendedor_id, cliente_id, orden, estado, visitado_en, nota, cliente:clientes ( ${SELECT_CLIENTE} )`
 const SELECT_JORNADA = 'id, fecha, estado, iniciada_en, finalizada_en'
@@ -120,3 +120,15 @@ export const marcarParada = async (paradaId: string, estado: EstadoParada) => {
     .eq('id', paradaId)
   if (error) throw error
 }
+
+// ---------- Textos de dirección ----------
+export const comunaDe = (c: ClienteRuta) => c.dir?.sector?.comuna?.nombre ?? ''
+export const sectorDe = (c: ClienteRuta) => c.dir?.sector?.nombre ?? ''
+// "Yerbas Buenas 123 (Pasaje Los Olivos)"; si no tiene dirección por zonas, el texto antiguo
+export const lineaDireccion = (c: ClienteRuta) => {
+  if (!c.dir) return c.direccion ?? ''
+  const calle = [c.dir.calle?.nombre, c.dir.numero].filter(Boolean).join(' ')
+  return c.dir.pasaje ? `${calle} (${c.dir.pasaje.nombre})` : calle
+}
+// "Sector · Comuna"
+export const lineaZona = (c: ClienteRuta) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
