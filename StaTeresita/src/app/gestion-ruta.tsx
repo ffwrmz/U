@@ -109,7 +109,8 @@ const GestionRuta = () => {
         } else {
           setClientes(((cs as any[]) || []) as Cliente[])
         }
-        const { data: vs } = await supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'dueno']).order('nombre', { ascending: true })
+        const { data: vs } = await supabase.from('perfiles').select('id, nombre, rol, activo').in('rol', ['vendedor', 'dueno'])
+          .neq('activo', false).order('nombre', { ascending: true })
         // Furgón asignado a cada trabajador (si ya se ejecutó asignar_furgon.sql)
         const { data: fs } = await supabase.from('ubicaciones_inventario').select('nombre, responsable_id').eq('tipo', 'furgon').eq('activo', true)
         const furgonDe = (id: string) => ((fs as any[]) || []).find((f) => f.responsable_id === id)?.nombre ?? null
