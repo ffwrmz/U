@@ -12,3 +12,18 @@ export const fechaCorta = (fecha?: string | null) => {
   if (isNaN(d.getTime())) return ''
   return d.toLocaleDateString('es-CL')
 }
+
+// Teléfono chileno a solo dígitos con código de país: "+56 9 1234 5678" / "912345678" -> "56912345678".
+// Devuelve null si no es un celular válido (569 + 8 dígitos).
+export const normalizarTelefono = (valor: string): string | null => {
+  let n = valor.replace(/\D/g, '')
+  if (n.length === 9 && n.startsWith('9')) n = '56' + n
+  return /^569\d{8}$/.test(n) ? n : null
+}
+
+// Teléfono guardado ("56912345678", "+56 9 1234 5678", "912345678"...) -> los 9 dígitos que van después de +56.
+export const telefonoLocal = (guardado?: string | null) => {
+  const n = (guardado ?? '').replace(/\D/g, '')
+  if (n.length === 11 && n.startsWith('56')) return n.slice(2)
+  return n.slice(-9)
+}

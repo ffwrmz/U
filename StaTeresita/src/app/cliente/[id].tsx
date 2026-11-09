@@ -1,11 +1,15 @@
 import Header from '@/components/Header'
+import SelectorDireccion from '@/components/SelectorDireccion'
+import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
-import { clp, fechaCorta } from '@/lib/format'
+import { esGerente } from '@/lib/demoJornada'
+import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
+import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, validarDireccion } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 interface Cliente { id: string; nombre: string; rut: string | null; telefono: string | null; direccion: string | null }
@@ -52,6 +56,23 @@ const HistorialCliente = () => {
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [guardando, setGuardando] = useState(false)
   const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
+
+  // Editar datos del cliente (solo el gerente)
+  const [soyGerente, setSoyGerente] = useState(false)
+  const [modalEditar, setModalEditar] = useState(false)
+  const [form, setForm] = useState({ nombre: '', rut: '', telefono: '' })
+  const [formDireccion, setFormDireccion] = useState<DireccionForm>(direccionVacia)
+  const [catalogo, setCatalogo] = useState<Catalogo>(catalogoVacio)
+  const [guardandoDatos, setGuardandoDatos] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      setSoyGerente(esGerente(perfil?.rol))
+    })()
+  }, [])
 
   const cargar = useCallback(async () => {
     {
@@ -159,6 +180,63 @@ const HistorialCliente = () => {
     return { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted }
   }
 
+  const abrirEditar = async () => {
+    if (!cliente) return
+    setForm({ nombre: cliente.nombre ?? '', rut: cliente.rut ?? '', telefono: telefonoLocal(cliente.telefono) })
+    setFormDireccion(direccionVacia)
+    setModalEditar(true)
+    // Catálogo de zonas y dirección actual del cliente (si ya tiene una de la tabla direcciones)
+    const { catalogo: cat } = await cargarCatalogo()
+    setCatalogo(cat)
+    const actual = await direccionDeCliente(cat, cliente.id)
+    if (actual) setFormDireccion(actual)
+  }
+
+  const guardarDatos = async () => {
+    const nombre = form.nombre.trim()
+    const rut = form.rut.trim()
+    if (!nombre || !rut) { Alert.alert('Error', 'El nombre y el RUT son obligatorios'); return }
+    const telefono = normalizarTelefono(form.telefono)
+    if (!telefono) { Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)'); return }
+    const faltaDireccion = validarDireccion(formDireccion)
+    if (faltaDireccion) { Alert.alert('Error', faltaDireccion); return }
+    setGuardandoDatos(true)
+    try {
+      // Reutiliza la dirección si ya existe (puede ser compartida con otros clientes) o la crea
+      const direccionId = await guardarDireccion(formDireccion)
+      const { data, error: e } = await supabase.from('clientes')
+        .update({ nombre, rut, telefono, direccion_id: direccionId, direccion: textoDireccion(catalogo, formDireccion) })
+        .eq('id', id).select('id, nombre, rut, telefono, direccion').single()
+      if (e) {
+        if (e.code === '23505') { Alert.alert('Error', 'Ya existe otro cliente con ese RUT'); return }
+        if (e.code === 'PGRST116') { Alert.alert('Error', 'No tienes permiso para editar este cliente'); return }
+        throw e
+      }
+      if (!data) { Alert.alert('Error', 'No tienes permiso para editar este cliente'); return }
+      setCliente(data as Cliente)
+      setModalEditar(false)
+      Alert.alert('Éxito', 'Datos del cliente actualizados')
+    } catch (e: any) {
+      Alert.alert('Error al guardar', e.message)
+    } finally {
+      setGuardandoDatos(false)
+    }
+  }
+
+  const abrirWhatsApp = async () => {
+    let numero = (cliente?.telefono ?? '').replace(/\D/g, '')
+    if (numero.length === 9) numero = '56' + numero // 9XXXXXXXX → 569XXXXXXXX
+    if (numero.length < 11) {
+      Alert.alert('WhatsApp', 'El cliente no tiene un teléfono válido.')
+      return
+    }
+    try {
+      await Linking.openURL(`whatsapp://send?phone=${numero}`)
+    } catch {
+      Alert.alert('WhatsApp', 'WhatsApp no está instalado en este teléfono.')
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header title={cliente?.nombre ?? 'Cliente'} />
@@ -170,8 +248,24 @@ const HistorialCliente = () => {
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.card}>
             <Dato icono="id-card-outline" texto={cliente.rut || 'Sin RUT'} />
-            <Dato icono="call-outline" texto={cliente.telefono || 'Sin teléfono'} />
+            <View style={styles.filaTelefono}>
+              <View style={{ flex: 1 }}>
+                <Dato icono="call-outline" texto={cliente.telefono || 'Sin teléfono'} />
+              </View>
+              {cliente.telefono ? (
+                <Pressable style={({ pressed }) => [styles.botonWhatsApp, pressed && { opacity: 0.8 }]} onPress={abrirWhatsApp}
+                  accessibilityLabel="Escribir por WhatsApp" hitSlop={8}>
+                  <Ionicons name="logo-whatsapp" size={22} color={Palette.onNavy} />
+                </Pressable>
+              ) : null}
+            </View>
             <Dato icono="location-outline" texto={cliente.direccion || 'Sin dirección'} />
+            {soyGerente ? (
+              <Pressable style={styles.botonEditar} onPress={abrirEditar}>
+                <Ionicons name="create-outline" size={16} color={Palette.navy} />
+                <Text style={styles.botonEditarText}>Editar datos</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={styles.resumenFila}>
@@ -319,6 +413,34 @@ const HistorialCliente = () => {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      <Modal visible={modalEditar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalEditar(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Editar cliente</Text>
+            <Pressable onPress={() => setModalEditar(false)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {([
+              ['nombre', 'Nombre *', 'Nombre del cliente', 'default'],
+              ['rut', 'RUT *', 'Ej. 12.345.678-9', 'default'],
+            ] as const).map(([k, label, ph, teclado]) => (
+              <View key={k}>
+                <Text style={styles.label}>{label}</Text>
+                <TextInput style={styles.inputDato} value={form[k]} onChangeText={(t) => setForm((f) => ({ ...f, [k]: t }))}
+                  placeholder={ph} placeholderTextColor={Palette.textFaint} keyboardType={teclado} editable={!guardandoDatos} />
+              </View>
+            ))}
+            <Text style={styles.label}>Teléfono *</Text>
+            <TelefonoInput value={form.telefono} onChangeText={(t) => setForm((f) => ({ ...f, telefono: t }))} editable={!guardandoDatos} />
+            <Text style={[styles.seccion, { marginTop: 22 }]}>Dirección</Text>
+            <SelectorDireccion catalogo={catalogo} value={formDireccion} onChange={setFormDireccion} editable={!guardandoDatos} />
+            <Pressable style={[styles.botonGuardar, guardandoDatos && { opacity: 0.6 }]} onPress={guardarDatos} disabled={guardandoDatos}>
+              <Text style={styles.botonPagarText}>{guardandoDatos ? 'Guardando...' : 'Guardar cambios'}</Text>
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -411,6 +533,11 @@ const styles = StyleSheet.create({
   verDetalle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8 },
   verDetalleText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 20, fontSize: 14, paddingHorizontal: 20 },
+  filaTelefono: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  botonWhatsApp: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.green },
+  botonEditar: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Palette.navySoft, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  botonEditarText: { color: Palette.navy, fontSize: 13, fontWeight: '800' },
+  inputDato: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, height: 50, fontSize: 15, color: Palette.text },
 })
 
 export default HistorialCliente

@@ -227,6 +227,18 @@ const HomeScreen = () => {
             {rolUsuario === 'dueno' && (
               <Pressable
                 style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../zonas')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
+                  <Ionicons name="map-outline" size={24} color={Palette.green} />
+                </View>
+                <Text style={styles.quickText}>Zonas</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
                 onPress={() => router.push('../solicitudes-descuento')}
               >
                 <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
