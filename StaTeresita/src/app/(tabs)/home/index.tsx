@@ -241,7 +241,7 @@ const HomeScreen = () => {
               <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
                 <Ionicons name="people-outline" size={24} color={Palette.navy} />
               </View>
-              <Text style={styles.quickText}>Ver clientes</Text>
+              <Text style={styles.quickText}>Clientes</Text>
             </Pressable>
 
             {/* Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente) */}
