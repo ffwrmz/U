@@ -137,7 +137,6 @@ const HomeScreen = () => {
                   <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
                 </Pressable>
 
-                {/* Botón Gestionar ruta (desactivado por ahora)
                 <Pressable
                   style={({ pressed }) => [styles.gestionCard, styles.gestionLila, pressed && styles.cardPressed]}
                   onPress={() => router.push('../gestion-ruta')}
@@ -149,7 +148,6 @@ const HomeScreen = () => {
                   <Text style={styles.gestionSub}>Revisa asignaciones, furgones y estado de visitas.</Text>
                   <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
                 </Pressable>
-                */}
               </View>
             </>
           ) : null

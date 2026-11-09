@@ -8,7 +8,39 @@ import { useCallback, useState } from 'react'
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-interface Cliente { id: string; nombre: string; direccion: string | null }
+// Dirección estructurada (clientes.direccion_id → direcciones → sector/comuna, calle, pasaje)
+interface Dir {
+  numero: string | null
+  referencia: string | null
+  sector: { nombre: string; comuna: { nombre: string } | null } | null
+  calle: { nombre: string } | null
+  pasaje: { nombre: string } | null
+}
+interface Cliente { id: string; nombre: string; direccion: string | null; dir: Dir | null }
+
+type Orden = 'zona' | 'comuna' | 'sector' | 'calle' | 'nombre'
+type Selector = 'comuna' | 'sector' | 'calle' | 'orden'
+const ORDENES: { k: Orden; t: string }[] = [
+  { k: 'zona', t: 'Sector, calle y número' },
+  { k: 'comuna', t: 'Comuna' },
+  { k: 'sector', t: 'Sector' },
+  { k: 'calle', t: 'Calle / pasaje' },
+  { k: 'nombre', t: 'Nombre' },
+]
+
+const comunaDe = (c: Cliente) => c.dir?.sector?.comuna?.nombre ?? ''
+const sectorDe = (c: Cliente) => c.dir?.sector?.nombre ?? ''
+// Una dirección se puede filtrar por su calle o por su pasaje
+const callesDe = (c: Cliente) => [c.dir?.calle?.nombre, c.dir?.pasaje?.nombre].filter(Boolean) as string[]
+// "Yerbas Buenas 123 (Pasaje Los Olivos)"
+const lineaDireccion = (c: Cliente) => {
+  if (!c.dir) return c.direccion ?? ''
+  const calle = [c.dir.calle?.nombre, c.dir.numero].filter(Boolean).join(' ')
+  return c.dir.pasaje ? `${calle} (${c.dir.pasaje.nombre})` : calle
+}
+const lineaZona = (c: Cliente) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
+const cmp = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
+const unicos = (l: string[]) => Array.from(new Set(l.filter(Boolean))).sort(cmp)
 
 const VISITA = {
   pendiente: { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted },
@@ -16,8 +48,8 @@ const VISITA = {
   no_esta: { texto: 'No estaba', fondo: Palette.amberSoft, color: Palette.amber },
 } as const
 
-// Pantalla solo de apariencia: las asignaciones viven en memoria (lib/demoJornada.ts).
-// Lo único que se lee de Supabase es el rol y la lista de clientes (tablas que ya existían).
+// Las asignaciones (paradas) aún viven en memoria (lib/demoJornada.ts), no se guardan en Supabase.
+// De Supabase se lee el rol, los trabajadores y los clientes con su dirección por zonas.
 const GestionRuta = () => {
   const [, setTick] = useState(0)
   const refrescar = () => setTick((t) => t + 1)
@@ -28,6 +60,11 @@ const GestionRuta = () => {
   const [caseroModal, setCaseroModal] = useState<{ casero_id: string; nombre: string } | null>(null)
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
+  const [fComuna, setFComuna] = useState<string | null>(null)
+  const [fSector, setFSector] = useState<string | null>(null)
+  const [fCalle, setFCalle] = useState<string | null>(null)
+  const [orden, setOrden] = useState<Orden>('zona')
+  const [selector, setSelector] = useState<Selector | null>(null)
 
   const editable = store.estado === 'preparacion' && soyGerente
   const caseros = vendedores
@@ -41,8 +78,16 @@ const GestionRuta = () => {
           const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
           setSoyGerente(esGerente(perfil?.rol))
         }
-        const { data: cs } = await supabase.from('clientes').select('id, nombre, direccion').order('nombre', { ascending: true })
-        setClientes((cs as Cliente[]) || [])
+        const { data: cs, error: ec } = await supabase.from('clientes')
+          .select('id, nombre, direccion, dir:direcciones ( numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )')
+          .order('nombre', { ascending: true })
+        if (ec) {
+          // Si falla la consulta con zonas, al menos se muestran los clientes con la dirección en texto
+          const { data: simples } = await supabase.from('clientes').select('id, nombre, direccion').order('nombre', { ascending: true })
+          setClientes(((simples as any[]) || []).map((c) => ({ ...c, dir: null })))
+        } else {
+          setClientes(((cs as any[]) || []) as Cliente[])
+        }
         const { data: vs } = await supabase.from('perfiles').select('id, nombre, rol').in('rol', ['vendedor', 'dueno']).order('nombre', { ascending: true })
         // Furgón asignado a cada trabajador (si ya se ejecutó asignar_furgon.sql)
         const { data: fs } = await supabase.from('ubicaciones_inventario').select('nombre, responsable_id').eq('tipo', 'furgon').eq('activo', true)
@@ -59,7 +104,7 @@ const GestionRuta = () => {
 
   // ---------- Asignar ----------
   const abrirAsignar = (c: { casero_id: string; nombre: string }) => {
-    setSeleccion([]); setBusqueda('')
+    setSeleccion([]); setBusqueda(''); setSelector(null)
     setCaseroModal(c)
   }
 
@@ -75,7 +120,7 @@ const GestionRuta = () => {
       if (!c) return
       store.paradas.push({
         id: uid(), casero_id: caseroModal.casero_id, cliente_id, nombre: c.nombre,
-        direccion: c.direccion, orden: base + i + 1, estado_visita: 'pendiente',
+        direccion: lineaDireccion(c) || c.direccion, orden: base + i + 1, estado_visita: 'pendiente',
       })
     })
     setCaseroModal(null)
@@ -96,11 +141,55 @@ const GestionRuta = () => {
     refrescar()
   }
 
-  const filtrados = sinAsignar.filter((c) => {
-    const t = busqueda.trim().toLowerCase()
-    if (!t) return true
-    return c.nombre.toLowerCase().includes(t) || (c.direccion ?? '').toLowerCase().includes(t)
-  })
+  // ---------- Filtros y orden (para elegir clientes) ----------
+  const conZona = sinAsignar.filter((c) => c.dir)
+  const opcionesComuna = unicos(conZona.map(comunaDe))
+  const opcionesSector = unicos(conZona.filter((c) => !fComuna || comunaDe(c) === fComuna).map(sectorDe))
+  const opcionesCalle = unicos(conZona
+    .filter((c) => (!fComuna || comunaDe(c) === fComuna) && (!fSector || sectorDe(c) === fSector))
+    .flatMap(callesDe))
+  const hayFiltroZona = !!(fComuna || fSector || fCalle)
+
+  const t = busqueda.trim().toLowerCase()
+  const filtrados = sinAsignar
+    .filter((c) => !t || c.nombre.toLowerCase().includes(t))
+    .filter((c) => !hayFiltroZona || (!!c.dir
+      && (!fComuna || comunaDe(c) === fComuna)
+      && (!fSector || sectorDe(c) === fSector)
+      && (!fCalle || callesDe(c).includes(fCalle))))
+    .sort((a, b) => {
+      // Los clientes sin zona siempre al final
+      if (!a.dir !== !b.dir) return a.dir ? -1 : 1
+      const calleNum = (c: Cliente) => `${c.dir?.calle?.nombre ?? ''} ${c.dir?.pasaje?.nombre ?? ''} ${c.dir?.numero ?? ''}`
+      const claves: Record<Orden, (c: Cliente) => string[]> = {
+        zona: (c) => [sectorDe(c), calleNum(c), c.nombre],
+        comuna: (c) => [comunaDe(c), sectorDe(c), calleNum(c), c.nombre],
+        sector: (c) => [sectorDe(c), c.nombre],
+        calle: (c) => [calleNum(c), c.nombre],
+        nombre: (c) => [c.nombre],
+      }
+      const ka = claves[orden](a), kb = claves[orden](b)
+      for (let i = 0; i < ka.length; i++) { const r = cmp(ka[i], kb[i]); if (r) return r }
+      return 0
+    })
+
+  const elegirFiltro = (valor: string | null) => {
+    if (selector === 'comuna') { setFComuna(valor); setFSector(null); setFCalle(null) }
+    if (selector === 'sector') { setFSector(valor); setFCalle(null) }
+    if (selector === 'calle') setFCalle(valor)
+    setSelector(null)
+  }
+  const opcionesSelector: { valor: string | null; texto: string }[] =
+    selector === 'orden' ? ORDENES.map((o) => ({ valor: o.k, texto: o.t }))
+    : [{ valor: null, texto: 'Todos' }, ...(selector === 'comuna' ? opcionesComuna : selector === 'sector' ? opcionesSector : opcionesCalle).map((x) => ({ valor: x, texto: x }))]
+  const valorSelector = selector === 'comuna' ? fComuna : selector === 'sector' ? fSector : selector === 'calle' ? fCalle : orden
+
+  const todosSeleccionados = filtrados.length > 0 && filtrados.every((c) => seleccion.includes(c.id))
+  const seleccionarTodos = () => setSeleccion((s) => todosSeleccionados
+    ? s.filter((id) => !filtrados.some((c) => c.id === id))
+    : Array.from(new Set([...s, ...filtrados.map((c) => c.id)])))
+
+  const clienteDe = (id: string) => clientes.find((c) => c.id === id)
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -164,12 +253,13 @@ const GestionRuta = () => {
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
                 {lista.map((p, i) => {
                   const v = VISITA[p.estado_visita] ?? VISITA.pendiente
+                  const cp = clienteDe(p.cliente_id)
                   return (
                     <View key={p.id} style={styles.parada}>
                       <View style={styles.numero}><Text style={styles.numeroText}>{i + 1}</Text></View>
                       <View style={{ flex: 1, gap: 3 }}>
                         <Text style={styles.paradaNombre} numberOfLines={1}>{p.nombre}</Text>
-                        {!!p.direccion && (
+                        {cp ? <DireccionCliente c={cp} /> : !!p.direccion && (
                           <View style={styles.dirRow}>
                             <Ionicons name="location-outline" size={13} color={Palette.textMuted} />
                             <Text style={styles.dirText} numberOfLines={1}>{p.direccion}</Text>
@@ -202,20 +292,44 @@ const GestionRuta = () => {
             <Text style={styles.modalTitle}>Clientes para {caseroModal?.nombre}</Text>
             <Pressable onPress={() => setCaseroModal(null)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
           </View>
-          <View style={{ padding: 16, paddingBottom: 0 }}>
+          <View style={{ padding: 16, paddingBottom: 0, gap: 10 }}>
             <TextInput style={styles.input} value={busqueda} onChangeText={setBusqueda}
-              placeholder="Buscar por nombre o dirección" placeholderTextColor={Palette.textFaint} />
+              placeholder="Buscar por nombre" placeholderTextColor={Palette.textFaint} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {([
+                ['comuna', 'Comuna', fComuna],
+                ['sector', 'Sector', fSector],
+                ['calle', 'Calle / pasaje', fCalle],
+              ] as const).map(([k, etiqueta, valor]) => (
+                <Pressable key={k} style={[styles.chip, valor && styles.chipActivo]} onPress={() => setSelector(k)}>
+                  <Text style={[styles.chipText, valor && { color: Palette.onNavy }]} numberOfLines={1}>{etiqueta}: {valor ?? 'Todos'}</Text>
+                  <Ionicons name="chevron-down" size={14} color={valor ? Palette.onNavy : Palette.navy} />
+                </Pressable>
+              ))}
+              <Pressable style={styles.chip} onPress={() => setSelector('orden')}>
+                <Ionicons name="swap-vertical" size={14} color={Palette.navy} />
+                <Text style={styles.chipText}>{ORDENES.find((o) => o.k === orden)?.t}</Text>
+              </Pressable>
+            </ScrollView>
+            <View style={styles.filaSeleccion}>
+              <Text style={styles.sub}>{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'}{hayFiltroZona ? ' en esta zona' : ''}</Text>
+              {filtrados.length > 0 && (
+                <Pressable onPress={seleccionarTodos} hitSlop={6}>
+                  <Text style={styles.linkText}>{todosSeleccionados ? 'Quitar todos' : 'Seleccionar todos'}</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
           <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-            {filtrados.length === 0 && <Text style={styles.sub}>No quedan clientes sin asignar.</Text>}
+            {filtrados.length === 0 && <Text style={styles.sub}>{sinAsignar.length === 0 ? 'No quedan clientes sin asignar.' : 'Ningún cliente coincide con los filtros.'}</Text>}
             {filtrados.map((c) => {
               const activo = seleccion.includes(c.id)
               return (
                 <Pressable key={c.id} style={[styles.opcion, activo && styles.opcionActiva]} onPress={() => alternar(c.id)}>
                   <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={22} color={activo ? Palette.navy : Palette.textFaint} />
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, gap: 2 }}>
                     <Text style={styles.paradaNombre}>{c.nombre}</Text>
-                    {!!c.direccion && <Text style={styles.sub} numberOfLines={1}>{c.direccion}</Text>}
+                    <DireccionCliente c={c} />
                   </View>
                 </Pressable>
               )
@@ -227,11 +341,50 @@ const GestionRuta = () => {
               <Text style={styles.botonText}>{`Asignar ${seleccion.length} cliente${seleccion.length === 1 ? '' : 's'}`}</Text>
             </Pressable>
           </View>
+
+          {/* Selector de filtro / orden (encima del modal) */}
+          {selector && (
+            <Pressable style={styles.capa} onPress={() => setSelector(null)}>
+              <Pressable style={styles.hoja} onPress={() => {}}>
+                <Text style={styles.hojaTitulo}>
+                  {selector === 'orden' ? 'Ordenar por' : selector === 'calle' ? 'Calle / pasaje' : selector === 'sector' ? 'Sector' : 'Comuna'}
+                </Text>
+                <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 6 }}>
+                  {opcionesSelector.length <= 1 && selector !== 'orden' && (
+                    <Text style={styles.sub}>No hay opciones con los filtros actuales.</Text>
+                  )}
+                  {opcionesSelector.map((o) => {
+                    const activo = o.valor === valorSelector
+                    return (
+                      <Pressable key={o.valor ?? 'todos'} style={[styles.opcionHoja, activo && styles.opcionHojaActiva]}
+                        onPress={() => (selector === 'orden' ? (setOrden(o.valor as Orden), setSelector(null)) : elegirFiltro(o.valor))}>
+                        <Text style={[styles.opcionHojaText, activo && { color: Palette.onNavy }]}>{o.texto}</Text>
+                        {activo && <Ionicons name="checkmark" size={18} color={Palette.onNavy} />}
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          )}
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
   )
 }
+
+// Dirección de un cliente: "Calle 123 (Pasaje)", "Sector · Comuna" e indicaciones
+const DireccionCliente = ({ c }: { c: Cliente }) => (
+  <View style={{ gap: 1 }}>
+    <View style={styles.dirRow}>
+      <Ionicons name="location-outline" size={13} color={Palette.textMuted} />
+      <Text style={styles.dirText} numberOfLines={1}>{lineaDireccion(c) || 'Sin dirección'}</Text>
+      {!c.dir && <View style={styles.sinZona}><Text style={styles.sinZonaText}>Sin zona</Text></View>}
+    </View>
+    {!!c.dir && <Text style={styles.zonaText} numberOfLines={1}>{lineaZona(c)}</Text>}
+    {!!c.dir?.referencia && <Text style={styles.referencia} numberOfLines={2}>{c.dir.referencia}</Text>}
+  </View>
+)
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Palette.cream },
@@ -270,6 +423,21 @@ const styles = StyleSheet.create({
   opcionActiva: { borderColor: Palette.navy, backgroundColor: Palette.navySoft },
   boton: { backgroundColor: Palette.navy, padding: 16, borderRadius: 12, alignItems: 'center' },
   botonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
+  zonaText: { fontSize: 12, fontWeight: '600', color: Palette.navy, marginLeft: 17 },
+  referencia: { fontSize: 12, fontStyle: 'italic', color: Palette.textFaint, marginLeft: 17 },
+  sinZona: { backgroundColor: Palette.amberSoft, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  sinZonaText: { fontSize: 10, fontWeight: '800', color: Palette.amber },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, paddingHorizontal: 12, height: 36, maxWidth: 220 },
+  chipActivo: { backgroundColor: Palette.navy, borderColor: Palette.navy },
+  chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy, flexShrink: 1 },
+  filaSeleccion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  linkText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
+  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
+  hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },
+  opcionHoja: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  opcionHojaActiva: { backgroundColor: Palette.navy, borderColor: Palette.navy },
+  opcionHojaText: { fontSize: 15, fontWeight: '600', color: Palette.text },
 })
 
 export default GestionRuta
