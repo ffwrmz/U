@@ -60,9 +60,10 @@ const GestionRuta = () => {
   const [caseroModal, setCaseroModal] = useState<{ casero_id: string; nombre: string } | null>(null)
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
-  const [fComuna, setFComuna] = useState<string | null>(null)
-  const [fSector, setFSector] = useState<string | null>(null)
-  const [fCalle, setFCalle] = useState<string | null>(null)
+  // Filtros de selección múltiple (lista vacía = "Todos")
+  const [fComuna, setFComuna] = useState<string[]>([])
+  const [fSector, setFSector] = useState<string[]>([])
+  const [fCalle, setFCalle] = useState<string[]>([])
   const [orden, setOrden] = useState<Orden>('zona')
   const [selector, setSelector] = useState<Selector | null>(null)
 
@@ -144,19 +145,23 @@ const GestionRuta = () => {
   // ---------- Filtros y orden (para elegir clientes) ----------
   const conZona = sinAsignar.filter((c) => c.dir)
   const opcionesComuna = unicos(conZona.map(comunaDe))
-  const opcionesSector = unicos(conZona.filter((c) => !fComuna || comunaDe(c) === fComuna).map(sectorDe))
-  const opcionesCalle = unicos(conZona
-    .filter((c) => (!fComuna || comunaDe(c) === fComuna) && (!fSector || sectorDe(c) === fSector))
-    .flatMap(callesDe))
-  const hayFiltroZona = !!(fComuna || fSector || fCalle)
+  const enComunas = (c: Cliente, l: string[]) => l.length === 0 || l.includes(comunaDe(c))
+  const enSectores = (c: Cliente, l: string[]) => l.length === 0 || l.includes(sectorDe(c))
+  const enCalles = (c: Cliente, l: string[]) => l.length === 0 || callesDe(c).some((x) => l.includes(x))
+  const sectoresPara = (comunas: string[]) => unicos(conZona.filter((c) => enComunas(c, comunas)).map(sectorDe))
+  const callesPara = (comunas: string[], sectores: string[]) =>
+    unicos(conZona.filter((c) => enComunas(c, comunas) && enSectores(c, sectores)).flatMap(callesDe))
+  const opcionesSector = sectoresPara(fComuna)
+  const opcionesCalle = callesPara(fComuna, fSector)
+  const nFiltros = fComuna.length + fSector.length + fCalle.length
+  const hayFiltroZona = nFiltros > 0
+  const limpiarFiltros = () => { setFComuna([]); setFSector([]); setFCalle([]) }
 
   const t = busqueda.trim().toLowerCase()
   const filtrados = sinAsignar
     .filter((c) => !t || c.nombre.toLowerCase().includes(t))
     .filter((c) => !hayFiltroZona || (!!c.dir
-      && (!fComuna || comunaDe(c) === fComuna)
-      && (!fSector || sectorDe(c) === fSector)
-      && (!fCalle || callesDe(c).includes(fCalle))))
+      && enComunas(c, fComuna) && enSectores(c, fSector) && enCalles(c, fCalle)))
     .sort((a, b) => {
       // Los clientes sin zona siempre al final
       if (!a.dir !== !b.dir) return a.dir ? -1 : 1
@@ -173,16 +178,25 @@ const GestionRuta = () => {
       return 0
     })
 
-  const elegirFiltro = (valor: string | null) => {
-    if (selector === 'comuna') { setFComuna(valor); setFSector(null); setFCalle(null) }
-    if (selector === 'sector') { setFSector(valor); setFCalle(null) }
-    if (selector === 'calle') setFCalle(valor)
-    setSelector(null)
+  // Marca/desmarca una opción; al cambiar comunas o sectores se quitan los niveles de abajo que ya no corresponden
+  const aplicarFiltros = (comunas: string[], sectores: string[], calles: string[]) => {
+    const sectoresOk = sectores.filter((x) => sectoresPara(comunas).includes(x))
+    const callesOk = calles.filter((x) => callesPara(comunas, sectoresOk).includes(x))
+    setFComuna(comunas); setFSector(sectoresOk); setFCalle(callesOk)
   }
+  const alternarEn = (l: string[], v: string) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v])
+  const alternarFiltro = (valor: string | null) => {
+    if (selector === 'comuna') aplicarFiltros(valor === null ? [] : alternarEn(fComuna, valor), fSector, fCalle)
+    if (selector === 'sector') aplicarFiltros(fComuna, valor === null ? [] : alternarEn(fSector, valor), fCalle)
+    if (selector === 'calle') aplicarFiltros(fComuna, fSector, valor === null ? [] : alternarEn(fCalle, valor))
+  }
+  const marcados = selector === 'comuna' ? fComuna : selector === 'sector' ? fSector : selector === 'calle' ? fCalle : []
   const opcionesSelector: { valor: string | null; texto: string }[] =
     selector === 'orden' ? ORDENES.map((o) => ({ valor: o.k, texto: o.t }))
     : [{ valor: null, texto: 'Todos' }, ...(selector === 'comuna' ? opcionesComuna : selector === 'sector' ? opcionesSector : opcionesCalle).map((x) => ({ valor: x, texto: x }))]
-  const valorSelector = selector === 'comuna' ? fComuna : selector === 'sector' ? fSector : selector === 'calle' ? fCalle : orden
+  const estaActivo = (valor: string | null) =>
+    selector === 'orden' ? valor === orden : valor === null ? marcados.length === 0 : marcados.includes(valor)
+  const textoChip = (l: string[], plural: string) => (l.length === 0 ? 'Todos' : l.length === 1 ? l[0] : `${l.length} ${plural}`)
 
   const todosSeleccionados = filtrados.length > 0 && filtrados.every((c) => seleccion.includes(c.id))
   const seleccionarTodos = () => setSeleccion((s) => todosSeleccionados
@@ -297,22 +311,32 @@ const GestionRuta = () => {
               placeholder="Buscar por nombre" placeholderTextColor={Palette.textFaint} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {([
-                ['comuna', 'Comuna', fComuna],
-                ['sector', 'Sector', fSector],
-                ['calle', 'Calle / pasaje', fCalle],
-              ] as const).map(([k, etiqueta, valor]) => (
-                <Pressable key={k} style={[styles.chip, valor && styles.chipActivo]} onPress={() => setSelector(k)}>
-                  <Text style={[styles.chipText, valor && { color: Palette.onNavy }]} numberOfLines={1}>{etiqueta}: {valor ?? 'Todos'}</Text>
-                  <Ionicons name="chevron-down" size={14} color={valor ? Palette.onNavy : Palette.navy} />
-                </Pressable>
-              ))}
+                ['comuna', 'Comuna', fComuna, 'comunas'],
+                ['sector', 'Sector', fSector, 'sectores'],
+                ['calle', 'Calle / pasaje', fCalle, 'calles'],
+              ] as const).map(([k, etiqueta, lista, plural]) => {
+                const on = lista.length > 0
+                return (
+                  <Pressable key={k} style={[styles.chip, on && styles.chipActivo]} onPress={() => setSelector(k)}>
+                    <Text style={[styles.chipText, on && { color: Palette.onNavy }]} numberOfLines={1}>{etiqueta}: {textoChip(lista, plural)}</Text>
+                    <Ionicons name="chevron-down" size={14} color={on ? Palette.onNavy : Palette.navy} />
+                  </Pressable>
+                )
+              })}
               <Pressable style={styles.chip} onPress={() => setSelector('orden')}>
                 <Ionicons name="swap-vertical" size={14} color={Palette.navy} />
                 <Text style={styles.chipText}>{ORDENES.find((o) => o.k === orden)?.t}</Text>
               </Pressable>
             </ScrollView>
             <View style={styles.filaSeleccion}>
-              <Text style={styles.sub}>{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'}{hayFiltroZona ? ' en esta zona' : ''}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={styles.sub}>{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'}</Text>
+                {hayFiltroZona && (
+                  <Pressable onPress={limpiarFiltros} hitSlop={6}>
+                    <Text style={styles.linkNavy}>Limpiar filtros ({nFiltros})</Text>
+                  </Pressable>
+                )}
+              </View>
               {filtrados.length > 0 && (
                 <Pressable onPress={seleccionarTodos} hitSlop={6}>
                   <Text style={styles.linkText}>{todosSeleccionados ? 'Quitar todos' : 'Seleccionar todos'}</Text>
@@ -354,16 +378,23 @@ const GestionRuta = () => {
                     <Text style={styles.sub}>No hay opciones con los filtros actuales.</Text>
                   )}
                   {opcionesSelector.map((o) => {
-                    const activo = o.valor === valorSelector
+                    const activo = estaActivo(o.valor)
+                    const multiple = selector !== 'orden' && o.valor !== null
                     return (
                       <Pressable key={o.valor ?? 'todos'} style={[styles.opcionHoja, activo && styles.opcionHojaActiva]}
-                        onPress={() => (selector === 'orden' ? (setOrden(o.valor as Orden), setSelector(null)) : elegirFiltro(o.valor))}>
-                        <Text style={[styles.opcionHojaText, activo && { color: Palette.onNavy }]}>{o.texto}</Text>
-                        {activo && <Ionicons name="checkmark" size={18} color={Palette.onNavy} />}
+                        onPress={() => (selector === 'orden' ? (setOrden(o.valor as Orden), setSelector(null)) : alternarFiltro(o.valor))}>
+                        {multiple && <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={20} color={activo ? Palette.onNavy : Palette.textFaint} />}
+                        <Text style={[styles.opcionHojaText, { flex: 1 }, activo && { color: Palette.onNavy }]}>{o.texto}</Text>
+                        {activo && !multiple && <Ionicons name="checkmark" size={18} color={Palette.onNavy} />}
                       </Pressable>
                     )
                   })}
                 </ScrollView>
+                {selector !== 'orden' && (
+                  <Pressable style={styles.boton} onPress={() => setSelector(null)}>
+                    <Text style={styles.botonText}>Listo{marcados.length ? ` (${marcados.length})` : ''}</Text>
+                  </Pressable>
+                )}
               </Pressable>
             </Pressable>
           )}
@@ -435,7 +466,8 @@ const styles = StyleSheet.create({
   capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },
-  opcionHoja: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  linkNavy: { fontSize: 13, fontWeight: '800', color: Palette.navy },
+  opcionHoja: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   opcionHojaActiva: { backgroundColor: Palette.navy, borderColor: Palette.navy },
   opcionHojaText: { fontSize: 15, fontWeight: '600', color: Palette.text },
 })
