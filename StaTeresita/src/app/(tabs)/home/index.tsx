@@ -1,5 +1,6 @@
 import { Palette } from '@/constants/palette'
-import { esGerente, store } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/demoJornada'
+import { cambiarEstadoJornada, Jornada, obtenerOCrearJornadaHoy } from '@/lib/rutas'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -22,7 +23,7 @@ const HomeScreen = () => {
   const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [clientes, setClientes] = useState<ClienteFila[]>([])
   const [deudas, setDeudas] = useState<Record<string, number>>({})
-  const [, setTick] = useState(0)
+  const [jornada, setJornada] = useState<Jornada | null>(null)
   const soyGerente = esGerente(rolUsuario)
 
 
@@ -66,21 +67,31 @@ const HomeScreen = () => {
         setDeudas(mapa)
       }
       cargar()
-      setTick((t) => t + 1) // refresca el resumen de la jornada (datos de ejemplo en memoria)
     }, [])
   )
 
-  // Iniciar / finalizar la jornada (solo apariencia: se guarda en memoria, no en Supabase) Se implementara cuando estemos trabajando con las rutas
+  // Jornada de hoy (tabla jornadas). El gerente la crea si aún no existe.
+  useFocusEffect(
+    useCallback(() => {
+      if (!soyGerente) return
+      obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => setJornada(null))
+    }, [soyGerente])
+  )
+
+  // Iniciar / finalizar la jornada de hoy (se guarda en Supabase)
   const cambiarEstado = (nuevo: 'en_curso' | 'finalizada') => {
+    if (!jornada) return
     const iniciar = nuevo === 'en_curso'
     Alert.alert(
       iniciar ? 'Iniciar ruta' : 'Finalizar ruta',
       iniciar
-        ? 'Al iniciar se bloquean la carga de los furgones, los clientes asignados y su orden. Las ventas y los abonos siguen funcionando.'
+        ? 'Al iniciar se bloquean los clientes asignados y su orden. Las ventas y los abonos siguen funcionando.'
         : 'Se cerrará la jornada de hoy.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => { store.estado = nuevo; setTick((t) => t + 1) } },
+        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => {
+          cambiarEstadoJornada(jornada.id, nuevo).then(setJornada).catch((e) => Alert.alert('Error', e.message))
+        } },
       ]
     )
   }
@@ -108,20 +119,18 @@ const HomeScreen = () => {
             <>
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-                {/* Botones Iniciar ruta / Finalizar ruta (desactivados por ahora) Se implementara cuando estemos trabajando con las rutas
-                {store.estado === 'preparacion' && (
+                {jornada?.estado === 'preparacion' && (
                   <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('en_curso')}>
                     <Ionicons name="play" size={13} color={Palette.onNavy} />
                     <Text style={styles.jornadaBtnText}>Iniciar ruta</Text>
                   </Pressable>
                 )}
-                {store.estado === 'en_curso' && (
+                {jornada?.estado === 'en_curso' && (
                   <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('finalizada')}>
                     <Ionicons name="stop" size={13} color={Palette.onNavy} />
                     <Text style={styles.jornadaBtnText}>Finalizar ruta</Text>
                   </Pressable>
                 )}
-                */}
               </View>
               <View style={{ height: 14 }} />
             <View style={styles.gestionRow}>
