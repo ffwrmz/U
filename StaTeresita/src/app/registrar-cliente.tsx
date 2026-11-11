@@ -1,10 +1,14 @@
 import { useRouter } from 'expo-router'
-import { useState } from 'react'
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Header from '../components/Header'
 import { supabase } from '../lib/supabase'
 import { Palette } from '@/constants/palette'
+import { normalizarTelefono } from '@/lib/format'
+import TelefonoInput from '@/components/TelefonoInput'
+import SelectorDireccion from '@/components/SelectorDireccion'
+import { Catalogo, catalogoVacio, cargarCatalogo, direccionVacia, guardarDireccion, textoDireccion, validarDireccion } from '@/lib/zonas'
 
 const RegistrarCliente = () => {
   const router = useRouter()
@@ -12,14 +16,29 @@ const RegistrarCliente = () => {
   const [nombre, setNombre] = useState('')
   const [rut, setRut] = useState('')
   const [telefono, setTelefono] = useState('')
-  const [direccion, setDireccion] = useState('')
+  const [direccion, setDireccion] = useState(direccionVacia)
+  const [catalogo, setCatalogo] = useState<Catalogo>(catalogoVacio)
+
+  useEffect(() => { cargarCatalogo().then((r) => setCatalogo(r.catalogo)) }, [])
   
   const [loading, setLoading] = useState(false)
 
   const guardarCliente = async () => {
     // 1. Validamos que los campos obligatorios no estén vacíos
-    if (!nombre || !telefono || !rut || !direccion) {
+    if (!nombre || !telefono || !rut) {
       Alert.alert('Error', 'El nombre, RUT y teléfono son obligatorios')
+      return
+    }
+    const faltaDireccion = validarDireccion(direccion)
+    if (faltaDireccion) {
+      Alert.alert('Error', faltaDireccion)
+      return
+    }
+
+    // Normalizamos el teléfono a solo dígitos con código de país: 569XXXXXXXX
+    const telefonoLimpio = normalizarTelefono(telefono)
+    if (!telefonoLimpio) {
+      Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)')
       return
     }
 
@@ -34,15 +53,19 @@ const RegistrarCliente = () => {
         return
       }
 
-      // 3. Insertamos los datos en la tabla clientes
+      // 3. Reutilizamos la dirección si ya existe (varios clientes pueden compartirla) o la creamos
+      const direccionId = await guardarDireccion(direccion)
+
+      // 4. Insertamos los datos en la tabla clientes
       const { error } = await supabase
         .from('clientes')
         .insert([
           { 
             nombre: nombre,
             rut: rut,
-            telefono: telefono,
-            direccion: direccion,
+            telefono: telefonoLimpio,
+            direccion_id: direccionId,
+            direccion: textoDireccion(catalogo, direccion), // texto antiguo, para pantallas que aún lo muestran
             creado_por: user.id 
           }
         ])
@@ -55,7 +78,7 @@ const RegistrarCliente = () => {
       setNombre('')
       setRut('')
       setTelefono('')
-      setDireccion('')
+      setDireccion(direccionVacia)
       router.back()
       
     } catch (error: any) {
@@ -70,7 +93,7 @@ const RegistrarCliente = () => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header title="Nuevo Cliente"/>
 
-      <View style={styles.form}>
+      <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>Nombre completo *</Text>
         <TextInput 
           style={styles.input} 
@@ -92,25 +115,10 @@ const RegistrarCliente = () => {
         />
 
         <Text style={styles.label}>Teléfono *</Text>
-        <TextInput 
-          style={styles.input} 
-          value={telefono} 
-          onChangeText={setTelefono} 
-          placeholder="Ej. +56 9 1234 5678" 
-          keyboardType="phone-pad" 
-          placeholderTextColor={Palette.textFaint}
-          editable={!loading}
-        />
+        <TelefonoInput value={telefono} onChangeText={setTelefono} editable={!loading} style={{ marginBottom: 18 }} />
 
-        <Text style={styles.label}>Dirección *</Text>
-        <TextInput 
-          style={styles.input} 
-          value={direccion} 
-          onChangeText={setDireccion} 
-          placeholder="Ej. Calle Principal 123" 
-          placeholderTextColor={Palette.textFaint}
-          editable={!loading}
-        />
+        <Text style={styles.seccion}>Dirección</Text>
+        <SelectorDireccion catalogo={catalogo} value={direccion} onChange={setDireccion} editable={!loading} />
 
         <Pressable 
           style={[styles.submitButton, loading && styles.submitButtonDisabled]} 
@@ -121,14 +129,15 @@ const RegistrarCliente = () => {
             {loading ? 'Guardando...' : 'Guardar Cliente'}
           </Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Palette.cream },
-  form: { padding: 24 },
+  form: { padding: 24, paddingBottom: 40 },
+  seccion: { fontSize: 13, fontWeight: '700', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6 },
   label: { fontSize: 14, color: Palette.text, marginBottom: 6, fontWeight: '600' },
   input: {
     backgroundColor: Palette.card,

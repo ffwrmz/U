@@ -1,5 +1,6 @@
 import { Palette } from '@/constants/palette'
-import { esGerente, store } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/demoJornada'
+import { cambiarEstadoJornada, Jornada, listarParadas, obtenerOCrearJornadaHoy, textoEstadoJornada } from '@/lib/rutas'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -22,7 +23,9 @@ const HomeScreen = () => {
   const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [clientes, setClientes] = useState<ClienteFila[]>([])
   const [deudas, setDeudas] = useState<Record<string, number>>({})
-  const [, setTick] = useState(0)
+  const [jornada, setJornada] = useState<Jornada | null>(null)
+  // Mi ruta de hoy (paradas asignadas a este usuario)
+  const [miRuta, setMiRuta] = useState<{ estado: Jornada['estado'] | null; total: number; pendientes: number }>({ estado: null, total: 0, pendientes: 0 })
   const soyGerente = esGerente(rolUsuario)
 
 
@@ -66,21 +69,48 @@ const HomeScreen = () => {
         setDeudas(mapa)
       }
       cargar()
-      setTick((t) => t + 1) // refresca el resumen de la jornada (datos de ejemplo en memoria)
     }, [])
   )
 
-  // Iniciar / finalizar la jornada (solo apariencia: se guarda en memoria, no en Supabase) Se implementara cuando estemos trabajando con las rutas
+  // Jornada de hoy (tabla jornadas). El gerente la crea si aún no existe.
+  useFocusEffect(
+    useCallback(() => {
+      if (!soyGerente) return
+      obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => setJornada(null))
+    }, [soyGerente])
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      const leer = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          const j = await obtenerOCrearJornadaHoy(false)
+          if (!user || !j) { setMiRuta({ estado: j?.estado ?? null, total: 0, pendientes: 0 }); return }
+          const ps = await listarParadas(j.id, user.id)
+          setMiRuta({ estado: j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+        } catch {
+          setMiRuta({ estado: null, total: 0, pendientes: 0 })
+        }
+      }
+      leer()
+    }, [])
+  )
+
+  // Iniciar / finalizar la jornada de hoy (se guarda en Supabase)
   const cambiarEstado = (nuevo: 'en_curso' | 'finalizada') => {
+    if (!jornada) return
     const iniciar = nuevo === 'en_curso'
     Alert.alert(
       iniciar ? 'Iniciar ruta' : 'Finalizar ruta',
       iniciar
-        ? 'Al iniciar se bloquean la carga de los furgones, los clientes asignados y su orden. Las ventas y los abonos siguen funcionando.'
+        ? 'Al iniciar se bloquean los clientes asignados y su orden. Las ventas y los abonos siguen funcionando.'
         : 'Se cerrará la jornada de hoy.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => { store.estado = nuevo; setTick((t) => t + 1) } },
+        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => {
+          cambiarEstadoJornada(jornada.id, nuevo).then(setJornada).catch((e) => Alert.alert('Error', e.message))
+        } },
       ]
     )
   }
@@ -108,20 +138,18 @@ const HomeScreen = () => {
             <>
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-                {/* Botones Iniciar ruta / Finalizar ruta (desactivados por ahora) Se implementara cuando estemos trabajando con las rutas
-                {store.estado === 'preparacion' && (
+                {jornada?.estado === 'preparacion' && (
                   <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('en_curso')}>
                     <Ionicons name="play" size={13} color={Palette.onNavy} />
                     <Text style={styles.jornadaBtnText}>Iniciar ruta</Text>
                   </Pressable>
                 )}
-                {store.estado === 'en_curso' && (
+                {jornada?.estado === 'en_curso' && (
                   <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('finalizada')}>
                     <Ionicons name="stop" size={13} color={Palette.onNavy} />
                     <Text style={styles.jornadaBtnText}>Finalizar ruta</Text>
                   </Pressable>
                 )}
-                */}
               </View>
               <View style={{ height: 14 }} />
             <View style={styles.gestionRow}>
@@ -137,7 +165,6 @@ const HomeScreen = () => {
                   <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
                 </Pressable>
 
-                {/* Botón Gestionar ruta (desactivado por ahora)
                 <Pressable
                   style={({ pressed }) => [styles.gestionCard, styles.gestionLila, pressed && styles.cardPressed]}
                   onPress={() => router.push('../gestion-ruta')}
@@ -149,7 +176,6 @@ const HomeScreen = () => {
                   <Text style={styles.gestionSub}>Revisa asignaciones, furgones y estado de visitas.</Text>
                   <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
                 </Pressable>
-                */}
               </View>
             </>
           ) : null
@@ -163,6 +189,25 @@ const HomeScreen = () => {
             <Text style={styles.summarySmall}>Por cobrar: {clp(totalPorCobrar)}</Text>
           </View>
           */}
+
+          {/* Mi ruta de hoy: el casero siempre; el gerente solo si también tiene paradas asignadas */}
+          {rolUsuario && (!soyGerente || miRuta.total > 0) && (
+            <Pressable
+              style={({ pressed }) => [styles.summaryCard, soyGerente && { marginTop: 12 }, pressed && styles.cardPressed]}
+              onPress={() => router.push('../mi-ruta')}
+            >
+              <View style={styles.sectionRow}>
+                <Text style={styles.summaryLabel}>Mi ruta de hoy · {textoEstadoJornada(miRuta.estado)}</Text>
+                <Ionicons name="chevron-forward" size={18} color={Palette.onNavyMuted} />
+              </View>
+              <Text style={styles.summaryBig}>
+                {miRuta.total === 0 ? 'Sin clientes asignados' : `${miRuta.pendientes} de ${miRuta.total} por visitar`}
+              </Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${miRuta.total ? ((miRuta.total - miRuta.pendientes) / miRuta.total) * 100 : 0}%` }]} />
+              </View>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.actionsContainer}>
@@ -196,7 +241,7 @@ const HomeScreen = () => {
               <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
                 <Ionicons name="people-outline" size={24} color={Palette.navy} />
               </View>
-              <Text style={styles.quickText}>Ver clientes</Text>
+              <Text style={styles.quickText}>Clientes</Text>
             </Pressable>
 
             {/* Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente) */}
@@ -221,6 +266,42 @@ const HomeScreen = () => {
                   <Ionicons name="time-outline" size={24} color={Palette.orange} />
                 </View>
                 <Text style={styles.quickText}>Historial</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../rutas-semana')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
+                  <Ionicons name="calendar-outline" size={24} color={Palette.orange} />
+                </View>
+                <Text style={styles.quickText}>Rutas de la semana</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../trabajadores')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
+                  <Ionicons name="people" size={24} color={Palette.navy} />
+                </View>
+                <Text style={styles.quickText}>Trabajadores</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../zonas')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
+                  <Ionicons name="map-outline" size={24} color={Palette.green} />
+                </View>
+                <Text style={styles.quickText}>Zonas</Text>
               </Pressable>
             )}
 

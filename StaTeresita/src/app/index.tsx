@@ -32,13 +32,26 @@ const Index = () => {
     }
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
+    // Un trabajador desactivado por el gerente no puede entrar
+    let desactivado = false
+    if (!error && data.user) {
+      const { data: perfil } = await supabase.from('perfiles').select('*').eq('id', data.user.id).maybeSingle()
+      desactivado = !perfil || perfil.activo === false || !perfil.rol
+    }
+
     if (error) {
-      Alert.alert('Error al iniciar sesión', error.message)
+      // Supabase responde "User is banned" cuando la cuenta fue desactivada
+      const baneado = /banned/i.test(error.message)
+      Alert.alert('Error al iniciar sesión', baneado ? 'Tu cuenta está desactivada. Habla con el gerente.' : error.message)
+      setLoading(false)
+    } else if (desactivado) {
+      await supabase.auth.signOut()
+      Alert.alert('Cuenta desactivada', 'Tu cuenta está desactivada. Habla con el gerente.')
       setLoading(false)
     } else {
       setLoading(false)
