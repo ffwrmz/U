@@ -2,33 +2,19 @@ import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import {
-  asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
-  comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
+  asignarParadas, cambiarEstadoJornada, cargarRutasBase, ClienteRuta, diaSemana, EstadoJornada, Jornada, listarParadas,
+  moverParada, nombreDia, obtenerOCrearJornadaHoy, Parada, quitarParada, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
+import SelectorClientes from '@/components/SelectorClientes'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
-import { useFocusEffect } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 type Cliente = ClienteRuta
-
-type Orden = 'zona' | 'comuna' | 'sector' | 'calle' | 'nombre'
-type Selector = 'comuna' | 'sector' | 'calle' | 'orden'
-const ORDENES: { k: Orden; t: string }[] = [
-  { k: 'zona', t: 'Sector, calle y número' },
-  { k: 'comuna', t: 'Comuna' },
-  { k: 'sector', t: 'Sector' },
-  { k: 'calle', t: 'Calle / pasaje' },
-  { k: 'nombre', t: 'Nombre' },
-]
-
-// Una dirección se puede filtrar por su calle o por su pasaje
-const callesDe = (c: Cliente) => [c.dir?.calle?.nombre, c.dir?.pasaje?.nombre].filter(Boolean) as string[]
-const cmp = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
-const unicos = (l: string[]) => Array.from(new Set(l.filter(Boolean))).sort(cmp)
 
 const VISITA = {
   pendiente: { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted },
@@ -39,6 +25,7 @@ const VISITA = {
 // Ruta del día guardada en Supabase (jornadas + ruta_paradas, ver lib/rutas.ts).
 // También lee el rol, los trabajadores, su furgón y los clientes con su dirección por zonas.
 const GestionRuta = () => {
+  const router = useRouter()
   const [soyGerente, setSoyGerente] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
   const [paradas, setParadas] = useState<Parada[]>([])
@@ -49,14 +36,6 @@ const GestionRuta = () => {
   const [vendedores, setVendedores] = useState<{ casero_id: string; nombre: string; furgon: string | null }[]>([])
 
   const [caseroModal, setCaseroModal] = useState<{ casero_id: string; nombre: string } | null>(null)
-  const [seleccion, setSeleccion] = useState<string[]>([])
-  const [busqueda, setBusqueda] = useState('')
-  // Filtros de selección múltiple (lista vacía = "Todos")
-  const [fComuna, setFComuna] = useState<string[]>([])
-  const [fSector, setFSector] = useState<string[]>([])
-  const [fCalle, setFCalle] = useState<string[]>([])
-  const [orden, setOrden] = useState<Orden>('zona')
-  const [selector, setSelector] = useState<Selector | null>(null)
 
   const estado: EstadoJornada = jornada?.estado ?? 'preparacion'
   // El gerente solo puede cambiar la ruta mientras la jornada está en preparación
@@ -66,6 +45,22 @@ const GestionRuta = () => {
   const recargarParadas = async (j: Jornada | null = jornada) => {
     if (!j) { setParadas([]); return }
     setParadas(await listarParadas(j.id))
+  }
+
+  // Ruta base del día de la semana (Rutas de la semana)
+  const dia = jornada ? nombreDia(diaSemana(jornada.fecha)) : ''
+  const cargarBase = (reemplazar: boolean) => {
+    if (!jornada) return
+    const hacer = () => ejecutar(async () => {
+      const n = await cargarRutasBase(jornada.id, reemplazar)
+      setJornada({ ...jornada, cargada_desde_base: true })
+      Alert.alert('Ruta del ' + dia, n === 0 ? 'No había clientes nuevos que agregar.' : `Se agregaron ${n} cliente${n === 1 ? '' : 's'}.`)
+    })
+    if (!reemplazar) { hacer(); return }
+    Alert.alert('Recargar desde la ruta base', `Se borrarán los clientes asignados hoy y se cargará de nuevo la ruta del ${dia}.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Recargar', style: 'destructive', onPress: hacer },
+    ])
   }
 
   // Ejecuta un cambio en Supabase, muestra el error si falla y vuelve a leer las paradas
@@ -126,22 +121,13 @@ const GestionRuta = () => {
   const sinAsignar = clientes.filter((c) => !paradas.some((p) => p.cliente_id === c.id))
 
   // ---------- Asignar ----------
-  const abrirAsignar = (c: { casero_id: string; nombre: string }) => {
-    setSeleccion([]); setBusqueda(''); setSelector(null)
-    setCaseroModal(c)
-  }
+  const abrirAsignar = (c: { casero_id: string; nombre: string }) => setCaseroModal(c)
 
-  const alternar = (id: string) =>
-    setSeleccion((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
-
-  const guardarAsignacion = async () => {
-    if (!caseroModal || seleccion.length === 0 || !jornada) return
-    // Se respeta el orden en que aparecen en la lista (filtros y orden elegidos)
-    const ids = filtrados.map((c) => c.id).filter((id) => seleccion.includes(id))
-    const resto = seleccion.filter((id) => !ids.includes(id))
+  const guardarAsignacion = async (ids: string[]) => {
+    if (!caseroModal || ids.length === 0 || !jornada) return
     const casero = caseroModal.casero_id
     setCaseroModal(null)
-    await ejecutar(() => asignarParadas(jornada.id, casero, [...ids, ...resto]))
+    await ejecutar(() => asignarParadas(jornada.id, casero, ids))
   }
 
   const quitar = (p: Parada) => ejecutar(() => quitarParada(p.id))
@@ -160,67 +146,6 @@ const GestionRuta = () => {
       ]
     )
   }
-
-  // ---------- Filtros y orden (para elegir clientes) ----------
-  const conZona = sinAsignar.filter((c) => c.dir)
-  const opcionesComuna = unicos(conZona.map(comunaDe))
-  const enComunas = (c: Cliente, l: string[]) => l.length === 0 || l.includes(comunaDe(c))
-  const enSectores = (c: Cliente, l: string[]) => l.length === 0 || l.includes(sectorDe(c))
-  const enCalles = (c: Cliente, l: string[]) => l.length === 0 || callesDe(c).some((x) => l.includes(x))
-  const sectoresPara = (comunas: string[]) => unicos(conZona.filter((c) => enComunas(c, comunas)).map(sectorDe))
-  const callesPara = (comunas: string[], sectores: string[]) =>
-    unicos(conZona.filter((c) => enComunas(c, comunas) && enSectores(c, sectores)).flatMap(callesDe))
-  const opcionesSector = sectoresPara(fComuna)
-  const opcionesCalle = callesPara(fComuna, fSector)
-  const nFiltros = fComuna.length + fSector.length + fCalle.length
-  const hayFiltroZona = nFiltros > 0
-  const limpiarFiltros = () => { setFComuna([]); setFSector([]); setFCalle([]) }
-
-  const t = busqueda.trim().toLowerCase()
-  const filtrados = sinAsignar
-    .filter((c) => !t || c.nombre.toLowerCase().includes(t))
-    .filter((c) => !hayFiltroZona || (!!c.dir
-      && enComunas(c, fComuna) && enSectores(c, fSector) && enCalles(c, fCalle)))
-    .sort((a, b) => {
-      // Los clientes sin zona siempre al final
-      if (!a.dir !== !b.dir) return a.dir ? -1 : 1
-      const calleNum = (c: Cliente) => `${c.dir?.calle?.nombre ?? ''} ${c.dir?.pasaje?.nombre ?? ''} ${c.dir?.numero ?? ''}`
-      const claves: Record<Orden, (c: Cliente) => string[]> = {
-        zona: (c) => [sectorDe(c), calleNum(c), c.nombre],
-        comuna: (c) => [comunaDe(c), sectorDe(c), calleNum(c), c.nombre],
-        sector: (c) => [sectorDe(c), c.nombre],
-        calle: (c) => [calleNum(c), c.nombre],
-        nombre: (c) => [c.nombre],
-      }
-      const ka = claves[orden](a), kb = claves[orden](b)
-      for (let i = 0; i < ka.length; i++) { const r = cmp(ka[i], kb[i]); if (r) return r }
-      return 0
-    })
-
-  // Marca/desmarca una opción; al cambiar comunas o sectores se quitan los niveles de abajo que ya no corresponden
-  const aplicarFiltros = (comunas: string[], sectores: string[], calles: string[]) => {
-    const sectoresOk = sectores.filter((x) => sectoresPara(comunas).includes(x))
-    const callesOk = calles.filter((x) => callesPara(comunas, sectoresOk).includes(x))
-    setFComuna(comunas); setFSector(sectoresOk); setFCalle(callesOk)
-  }
-  const alternarEn = (l: string[], v: string) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v])
-  const alternarFiltro = (valor: string | null) => {
-    if (selector === 'comuna') aplicarFiltros(valor === null ? [] : alternarEn(fComuna, valor), fSector, fCalle)
-    if (selector === 'sector') aplicarFiltros(fComuna, valor === null ? [] : alternarEn(fSector, valor), fCalle)
-    if (selector === 'calle') aplicarFiltros(fComuna, fSector, valor === null ? [] : alternarEn(fCalle, valor))
-  }
-  const marcados = selector === 'comuna' ? fComuna : selector === 'sector' ? fSector : selector === 'calle' ? fCalle : []
-  const opcionesSelector: { valor: string | null; texto: string }[] =
-    selector === 'orden' ? ORDENES.map((o) => ({ valor: o.k, texto: o.t }))
-    : [{ valor: null, texto: 'Todos' }, ...(selector === 'comuna' ? opcionesComuna : selector === 'sector' ? opcionesSector : opcionesCalle).map((x) => ({ valor: x, texto: x }))]
-  const estaActivo = (valor: string | null) =>
-    selector === 'orden' ? valor === orden : valor === null ? marcados.length === 0 : marcados.includes(valor)
-  const textoChip = (l: string[], plural: string) => (l.length === 0 ? 'Todos' : l.length === 1 ? l[0] : `${l.length} ${plural}`)
-
-  const todosSeleccionados = filtrados.length > 0 && filtrados.every((c) => seleccion.includes(c.id))
-  const seleccionarTodos = () => setSeleccion((s) => todosSeleccionados
-    ? s.filter((id) => !filtrados.some((c) => c.id === id))
-    : Array.from(new Set([...s, ...filtrados.map((c) => c.id)])))
 
   const clienteDe = (id: string) => clientes.find((c) => c.id === id)
 
@@ -265,6 +190,11 @@ const GestionRuta = () => {
                 <Text style={styles.resumenTxt}>sin asignar</Text>
               </View>
             </View>
+            {soyGerente && jornada && (
+              <Text style={styles.resumenNota}>
+                {jornada.cargada_desde_base ? `Cargada desde la ruta del ${dia}. ` : ''}Los cambios aquí son solo para hoy; no cambian la ruta de la semana.
+              </Text>
+            )}
             {!editable && (
               <Text style={styles.resumenNota}>
                 {!soyGerente ? 'Solo el gerente puede modificar las rutas.'
@@ -272,6 +202,27 @@ const GestionRuta = () => {
               </Text>
             )}
           </View>
+
+          {soyGerente && (
+            <View style={styles.baseFila}>
+              {editable && (
+                <>
+                  <Pressable style={[styles.baseBtn, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => cargarBase(false)}>
+                    <Ionicons name="download-outline" size={15} color={Palette.navy} />
+                    <Text style={styles.baseBtnText}>Cargar ruta base</Text>
+                  </Pressable>
+                  <Pressable style={[styles.baseBtn, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => cargarBase(true)}>
+                    <Ionicons name="refresh" size={15} color={Palette.navy} />
+                    <Text style={styles.baseBtnText}>Recargar desde la base</Text>
+                  </Pressable>
+                </>
+              )}
+              <Pressable style={styles.baseBtn} onPress={() => router.push('../rutas-semana')}>
+                <Ionicons name="calendar-outline" size={15} color={Palette.navy} />
+                <Text style={styles.baseBtnText}>Rutas de la semana</Text>
+              </Pressable>
+            </View>
+          )}
 
           {caseros.length === 0 && (
             <View style={styles.aviso}>
@@ -332,107 +283,13 @@ const GestionRuta = () => {
         </ScrollView>
       )}
 
-      {/* Modal: asignar clientes */}
-      <Modal visible={!!caseroModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCaseroModal(null)}>
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Clientes para {caseroModal?.nombre}</Text>
-            <Pressable onPress={() => setCaseroModal(null)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
-          </View>
-          <View style={{ padding: 16, paddingBottom: 0, gap: 10 }}>
-            <TextInput style={styles.input} value={busqueda} onChangeText={setBusqueda}
-              placeholder="Buscar por nombre" placeholderTextColor={Palette.textFaint} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {([
-                ['comuna', 'Comuna', fComuna, 'comunas'],
-                ['sector', 'Sector', fSector, 'sectores'],
-                ['calle', 'Calle / pasaje', fCalle, 'calles'],
-              ] as const).map(([k, etiqueta, lista, plural]) => {
-                const on = lista.length > 0
-                return (
-                  <Pressable key={k} style={[styles.chip, on && styles.chipActivo]} onPress={() => setSelector(k)}>
-                    <Text style={[styles.chipText, on && { color: Palette.onNavy }]} numberOfLines={1}>{etiqueta}: {textoChip(lista, plural)}</Text>
-                    <Ionicons name="chevron-down" size={14} color={on ? Palette.onNavy : Palette.navy} />
-                  </Pressable>
-                )
-              })}
-              <Pressable style={styles.chip} onPress={() => setSelector('orden')}>
-                <Ionicons name="swap-vertical" size={14} color={Palette.navy} />
-                <Text style={styles.chipText}>{ORDENES.find((o) => o.k === orden)?.t}</Text>
-              </Pressable>
-            </ScrollView>
-            <View style={styles.filaSeleccion}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Text style={styles.sub}>{filtrados.length} cliente{filtrados.length === 1 ? '' : 's'}</Text>
-                {hayFiltroZona && (
-                  <Pressable onPress={limpiarFiltros} hitSlop={6}>
-                    <Text style={styles.linkNavy}>Limpiar filtros ({nFiltros})</Text>
-                  </Pressable>
-                )}
-              </View>
-              {filtrados.length > 0 && (
-                <Pressable onPress={seleccionarTodos} hitSlop={6}>
-                  <Text style={styles.linkText}>{todosSeleccionados ? 'Quitar todos' : 'Seleccionar todos'}</Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-            {filtrados.length === 0 && <Text style={styles.sub}>{sinAsignar.length === 0 ? 'No quedan clientes sin asignar.' : 'Ningún cliente coincide con los filtros.'}</Text>}
-            {filtrados.map((c) => {
-              const activo = seleccion.includes(c.id)
-              return (
-                <Pressable key={c.id} style={[styles.opcion, activo && styles.opcionActiva]} onPress={() => alternar(c.id)}>
-                  <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={22} color={activo ? Palette.navy : Palette.textFaint} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.paradaNombre}>{c.nombre}</Text>
-                    <DireccionCliente c={c} />
-                  </View>
-                </Pressable>
-              )
-            })}
-          </ScrollView>
-          <View style={{ padding: 16 }}>
-            <Pressable style={[styles.boton, seleccion.length === 0 && { opacity: 0.5 }]}
-              onPress={guardarAsignacion} disabled={seleccion.length === 0}>
-              <Text style={styles.botonText}>{`Asignar ${seleccion.length} cliente${seleccion.length === 1 ? '' : 's'}`}</Text>
-            </Pressable>
-          </View>
-
-          {/* Selector de filtro / orden (encima del modal) */}
-          {selector && (
-            <Pressable style={styles.capa} onPress={() => setSelector(null)}>
-              <Pressable style={styles.hoja} onPress={() => {}}>
-                <Text style={styles.hojaTitulo}>
-                  {selector === 'orden' ? 'Ordenar por' : selector === 'calle' ? 'Calle / pasaje' : selector === 'sector' ? 'Sector' : 'Comuna'}
-                </Text>
-                <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 6 }}>
-                  {opcionesSelector.length <= 1 && selector !== 'orden' && (
-                    <Text style={styles.sub}>No hay opciones con los filtros actuales.</Text>
-                  )}
-                  {opcionesSelector.map((o) => {
-                    const activo = estaActivo(o.valor)
-                    const multiple = selector !== 'orden' && o.valor !== null
-                    return (
-                      <Pressable key={o.valor ?? 'todos'} style={[styles.opcionHoja, activo && styles.opcionHojaActiva]}
-                        onPress={() => (selector === 'orden' ? (setOrden(o.valor as Orden), setSelector(null)) : alternarFiltro(o.valor))}>
-                        {multiple && <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={20} color={activo ? Palette.onNavy : Palette.textFaint} />}
-                        <Text style={[styles.opcionHojaText, { flex: 1 }, activo && { color: Palette.onNavy }]}>{o.texto}</Text>
-                        {activo && !multiple && <Ionicons name="checkmark" size={18} color={Palette.onNavy} />}
-                      </Pressable>
-                    )
-                  })}
-                </ScrollView>
-                {selector !== 'orden' && (
-                  <Pressable style={styles.boton} onPress={() => setSelector(null)}>
-                    <Text style={styles.botonText}>Listo{marcados.length ? ` (${marcados.length})` : ''}</Text>
-                  </Pressable>
-                )}
-              </Pressable>
-            </Pressable>
-          )}
-        </SafeAreaView>
-      </Modal>
+      <SelectorClientes
+        visible={!!caseroModal}
+        titulo={`Clientes para ${caseroModal?.nombre ?? ''}`}
+        clientes={sinAsignar}
+        onClose={() => setCaseroModal(null)}
+        onConfirm={guardarAsignacion}
+      />
     </SafeAreaView>
   )
 }
@@ -469,6 +326,9 @@ const styles = StyleSheet.create({
   pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   pillText: { fontSize: 11, fontWeight: '700' },
   acciones: { alignItems: 'center', gap: 2 },
+  baseFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  baseBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Palette.navySoft, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  baseBtnText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: Palette.text, flex: 1, marginRight: 8 },

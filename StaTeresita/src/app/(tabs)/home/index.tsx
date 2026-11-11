@@ -272,6 +272,18 @@ const HomeScreen = () => {
             {rolUsuario === 'dueno' && (
               <Pressable
                 style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../rutas-semana')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
+                  <Ionicons name="calendar-outline" size={24} color={Palette.orange} />
+                </View>
+                <Text style={styles.quickText}>Rutas de la semana</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
                 onPress={() => router.push('../trabajadores')}
               >
                 <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
