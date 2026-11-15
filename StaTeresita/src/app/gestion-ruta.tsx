@@ -31,12 +31,6 @@ const callesDe = (c: Cliente) => [c.dir?.calle?.nombre, c.dir?.pasaje?.nombre].f
 const cmp = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
 const unicos = (l: string[]) => Array.from(new Set(l.filter(Boolean))).sort(cmp)
 
-const VISITA = {
-  pendiente: { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted },
-  visitado: { texto: 'Visitado', fondo: Palette.greenSoft, color: Palette.green },
-  no_estaba: { texto: 'No estaba', fondo: Palette.amberSoft, color: Palette.amber },
-} as const
-
 // Ruta del día guardada en Supabase (jornadas + ruta_paradas, ver lib/rutas.ts).
 // También lee el rol, los trabajadores, su furgón y los clientes con su dirección por zonas.
 const GestionRuta = () => {
@@ -315,17 +309,12 @@ const GestionRuta = () => {
 
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
                 {lista.map((p, i) => {
-                  const v = VISITA[p.estado] ?? VISITA.pendiente
                   const cp = p.cliente ?? clienteDe(p.cliente_id)
                   return (
                     <View key={p.id} style={styles.parada}>
-                      <View style={styles.numero}><Text style={styles.numeroText}>{i + 1}</Text></View>
                       <View style={{ flex: 1, gap: 3 }}>
                         <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
                         {cp && <DireccionCliente c={cp} />}
-                        <View style={[styles.pill, { backgroundColor: v.fondo }]}>
-                          <Text style={[styles.pillText, { color: v.color }]}>{v.texto}</Text>
-                        </View>
                       </View>
                       {editable && (
                         <View style={styles.acciones}>
@@ -482,13 +471,9 @@ const styles = StyleSheet.create({
   botonChicoText: { color: Palette.onNavy, fontSize: 13, fontWeight: '700' },
   botonMapa: { width: 36, height: 36, borderRadius: 10, backgroundColor: Palette.navySoft, alignItems: 'center', justifyContent: 'center' },
   parada: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 14, padding: 10 },
-  numero: { width: 26, height: 26, borderRadius: 13, backgroundColor: Palette.grayPill, alignItems: 'center', justifyContent: 'center' },
-  numeroText: { fontSize: 12, fontWeight: '700', color: Palette.textMuted },
   paradaNombre: { fontSize: 15, fontWeight: '700', color: Palette.text },
   dirRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dirText: { flex: 1, fontSize: 12, color: Palette.textMuted },
-  pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  pillText: { fontSize: 11, fontWeight: '700' },
   acciones: { alignItems: 'center', gap: 2 },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
