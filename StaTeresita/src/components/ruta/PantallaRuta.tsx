@@ -328,6 +328,17 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     try {
       await marcarParada(p.id, nuevo)
       setTodas((l) => l.map((x) => (x.id === p.id ? { ...x, estado: nuevo, visitado_en: nuevo === 'pendiente' ? null : new Date().toISOString() } : x)))
+      // Al marcar Estaba / No estaba, pasa al siguiente cliente pendiente (en el mapa y en la lista)
+      if (nuevo !== 'pendiente') {
+        const i = paradas.findIndex((x) => x.id === p.id)
+        const siguiente = [...paradas.slice(i + 1), ...paradas.slice(0, i)].find((x) => x.estado === 'pendiente' && x.id !== p.id)
+        if (siguiente) {
+          setAbierta(null)
+          seleccionar(siguiente, true)
+        } else {
+          setSeleccion(null)
+        }
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message ?? String(e))
     } finally {
