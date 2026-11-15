@@ -293,7 +293,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       cargar()
     }
   }
-  const arrastre = useArrastre(paradas.map((x) => x.id), soltar)
+  // Separación entre tarjetas: más compacta al organizar (debe calzar con el gap de la lista)
+  const GAP = organizando ? 6 : 10
+  const arrastre = useArrastre(paradas.map((x) => x.id), soltar, GAP)
 
   // Terminar la organización: (si se está viendo la ruta sugerida, ofrece guardarla) y pasar a la ruta en curso.
   // Iniciar la jornada lo hace el gerente; el casero solo deja guardado el orden.
@@ -487,7 +489,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             // La fila que se arrastra se dibuja encima de las demás (componente fijo para no cortar el gesto)
             CellRendererComponent={CeldaArrastrable}
             keyExtractor={(p) => p.id}
-            contentContainerStyle={styles.content}
+            contentContainerStyle={[styles.content, { gap: GAP }]}
             onScrollToIndexFailed={(info) => setTimeout(() => lista.current?.scrollToIndex({ index: info.index, animated: true }), 300)}
             refreshControl={<RefreshControl refreshing={refrescando} onRefresh={() => { setRefrescando(true); setCuotas({}); cargar() }} tintColor={Palette.navy} />}
             ListHeaderComponent={
@@ -575,16 +577,16 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               const ocupado = marcando === p.id
               return (
                 <Animated.View onLayout={(e) => arrastre.setAltura(p.id, e.nativeEvent.layout.height)} style={arrastre.estiloDe(p.id)}>
-                <Pressable style={[styles.card, sel && styles.cardSel, arrastre.arrastrandoId === p.id && styles.cardArrastrada]} onPress={() => seleccionar(p, false)}>
+                <Pressable style={[styles.card, organizando && styles.cardCompacta, sel && styles.cardSel, arrastre.arrastrandoId === p.id && styles.cardArrastrada]} onPress={() => seleccionar(p, false)}>
                   <View style={styles.cardTop}>
-                    <View style={styles.numeroCol}>
-                      <View style={[styles.numero, { backgroundColor: COLORES_MAPA[p.estado] ?? Palette.navy }]}>
+                    <View style={[styles.numeroCol, organizando && styles.numeroColCompacta]}>
+                      <View style={[styles.numero, organizando && styles.numeroCompacto, { backgroundColor: COLORES_MAPA[p.estado] ?? Palette.navy }]}>
                         <Text style={styles.numeroText}>{index + 1}</Text>
                       </View>
                       {/* Manilla para agarrar y mover al cliente */}
                       {puedeArrastrar && p.estado === 'pendiente' && (
-                        <View {...arrastre.handlers(p.id)} style={styles.manilla} accessibilityLabel="Mantén y arrastra para mover">
-                          <MaterialIcons name="drag-indicator" size={26} color={Palette.navy} />
+                        <View {...arrastre.handlers(p.id)} hitSlop={10} style={[styles.manilla, organizando && styles.manillaCompacta]} accessibilityLabel="Mantén y arrastra para mover">
+                          <MaterialIcons name="drag-indicator" size={organizando ? 22 : 26} color={Palette.navy} />
                         </View>
                       )}
                     </View>
@@ -610,18 +612,18 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     {puedeMover && (
                       <View style={styles.flechas}>
                         <Pressable onPress={() => mover(p, -1)} disabled={!!marcando || index === 0} hitSlop={6}>
-                          <Ionicons name="chevron-up" size={18} color={index === 0 ? Palette.border : Palette.navy} />
+                          <Ionicons name="chevron-up" size={16} color={index === 0 ? Palette.border : Palette.textMuted} />
                         </Pressable>
                         <Pressable onPress={() => mover(p, 1)} disabled={!!marcando || index === enOrden.length - 1} hitSlop={6}>
-                          <Ionicons name="chevron-down" size={18} color={index === enOrden.length - 1 ? Palette.border : Palette.navy} />
+                          <Ionicons name="chevron-down" size={16} color={index === enOrden.length - 1 ? Palette.border : Palette.textMuted} />
                         </Pressable>
                       </View>
                     )}
-                    <View style={styles.iconos}>
+                    <View style={[styles.iconos, organizando && styles.iconosCompactos]}>
                       {organizando && c && (
-                        <Pressable style={[styles.icono, { backgroundColor: Palette.navySoft }]} hitSlop={6} accessibilityLabel="Ver ficha del cliente"
+                        <Pressable style={[styles.icono, styles.iconoCompacto, { backgroundColor: Palette.navySoft }]} hitSlop={8} accessibilityLabel="Ver ficha del cliente"
                           onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: c.id } } as any)}>
-                          <Ionicons name="person-outline" size={17} color={Palette.navy} />
+                          <Ionicons name="person-outline" size={15} color={Palette.navy} />
                         </Pressable>
                       )}
                       {!organizando && c?.telefono ? (
@@ -630,8 +632,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                         </Pressable>
                       ) : null}
                       {c && (
-                        <Pressable style={[styles.icono, { backgroundColor: Palette.navySoft }]} onPress={() => abrirComoLlegar(c)} hitSlop={6} accessibilityLabel="Cómo llegar">
-                          <Ionicons name="navigate" size={17} color={Palette.navy} />
+                        <Pressable style={[styles.icono, organizando && styles.iconoCompacto, { backgroundColor: Palette.navySoft }]} onPress={() => abrirComoLlegar(c)} hitSlop={8} accessibilityLabel="Cómo llegar">
+                          <Ionicons name="navigate" size={organizando ? 15 : 17} color={Palette.navy} />
                         </Pressable>
                       )}
                     </View>
@@ -740,6 +742,12 @@ const styles = StyleSheet.create({
   avisoNavyText: { flex: 1, fontSize: 13, color: Palette.navy },
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 20, fontSize: 14 },
   card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 10 },
+  cardCompacta: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, gap: 6 },
+  numeroColCompacta: { gap: 4 },
+  numeroCompacto: { width: 26, height: 26, borderRadius: 13 },
+  manillaCompacta: { width: 28, height: 28, borderRadius: 8 },
+  iconosCompactos: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
+  iconoCompacto: { width: 30, height: 30, borderRadius: 15 },
   cardArrastrada: { backgroundColor: Palette.inputFill, borderColor: Palette.navy, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   numeroCol: { alignItems: 'center', gap: 6 },
   manilla: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.navySoft },
