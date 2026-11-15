@@ -13,7 +13,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Animated, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const ESTADO = {
@@ -171,7 +171,18 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const yaMarcadas = enOrden.filter((p) => p.estado !== 'pendiente')
   const enSugerida = ordenVista === 'sugerida' && !!sugerida
   // En "Ruta sugerida" la lista y el mapa siguen ese orden (solo la vista, hasta apretar "Usar este orden")
-  const paradas = enSugerida ? [...sugeridas, ...pendientesSinPunto, ...yaMarcadas] : enOrden
+  // En Ruta en curso la lista se reordena según la visita: arriba los que "No estaba" (para volver a pasar
+  // al terminar), al medio los pendientes en el orden de la ruta y al final los que "Estaba".
+  const porHora = (a: Parada, b: Parada) => (a.visitado_en ?? '').localeCompare(b.visitado_en ?? '')
+  const paradas = enSugerida ? [...sugeridas, ...pendientesSinPunto, ...yaMarcadas]
+    : organizando ? enOrden
+    : [
+      ...enOrden.filter((x) => x.estado === 'no_estaba').sort(porHora),
+      ...enOrden.filter((x) => x.estado === 'pendiente'),
+      ...enOrden.filter((x) => x.estado === 'visitado').sort(porHora),
+    ]
+  const paradasRef = useRef(paradas)
+  paradasRef.current = paradas
   const numeroDe = (p: Parada) => paradas.findIndex((x) => x.id === p.id) + 1
   const estado = jornada?.estado
   const esMia = verDe === yo
@@ -187,7 +198,11 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
 
   // Camino en auto desde mi ubicación por las paradas pendientes, en el orden que se muestra.
   // La ubicación se redondea (~200 m) para no consultar de nuevo con cada actualización del GPS.
-  const pendientesEnVista = paradas.filter((p) => p.estado === 'pendiente' && puntoDe(p.cliente))
+  // Camino: pendientes en el orden que se muestra y, en Ruta en curso, al final los "No estaba" (para volver a pasar)
+  const pendientesEnVista = [
+    ...paradas.filter((p) => p.estado === 'pendiente' && puntoDe(p.cliente)),
+    ...(organizando ? [] : enOrden.filter((p) => p.estado === 'no_estaba' && puntoDe(p.cliente))),
+  ]
   const redondear = (q: Punto) => ({ latitud: Math.round(q.latitud * 500) / 500, longitud: Math.round(q.longitud * 500) / 500 })
   const inicioLinea = miUbicacion ? redondear(miUbicacion) : null
   const puntosLinea = [...(inicioLinea ? [inicioLinea] : []), ...pendientesEnVista.map((p) => puntoDe(p.cliente) as Punto)]
@@ -226,7 +241,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const seleccionar = (p: Parada, desdeMapa: boolean) => {
     setSeleccion(p.id)
     if (desdeMapa) {
-      const i = paradas.findIndex((x) => x.id === p.id)
+      const i = paradasRef.current.findIndex((x) => x.id === p.id)
       if (i >= 0) lista.current?.scrollToIndex({ index: i, animated: true, viewPosition: 0 })
     }
   }
@@ -324,27 +339,40 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
 
 
   const destello = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [completada, setCompletada] = useState(false)
+  const [aviso2, setAviso2] = useState<string | null>(null) // aviso breve, no bloqueante
+  const avisar = (t: string) => { setAviso2(t); setTimeout(() => setAviso2((a) => (a === t ? null : a)), 4000) }
 
   const marcar = async (p: Parada, nuevo: EstadoParada) => {
     setMarcando(p.id)
     try {
       await marcarParada(p.id, nuevo)
+      // Animación suave: la tarjeta se va arriba (No estaba) o al final (Estaba)
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
       setTodas((l) => l.map((x) => (x.id === p.id ? { ...x, estado: nuevo, visitado_en: nuevo === 'pendiente' ? null : new Date().toISOString() } : x)))
       // Al marcar "Estaba", pasa al siguiente cliente pendiente: la lista baja hasta él, se destaca un momento
       // y el mapa se centra en su casa. Si no quedan pendientes, avisa "Ruta completada" (sin bloquear).
-      if (nuevo === 'visitado') {
+      if (nuevo !== 'pendiente') {
         if (abierta === p.id) setAbierta(null)
-        const i = paradas.findIndex((x) => x.id === p.id)
-        const siguiente = [...paradas.slice(i + 1), ...paradas.slice(0, i)].find((x) => x.estado === 'pendiente' && x.id !== p.id)
-        if (siguiente) {
-          seleccionar(siguiente, true)
+        // Siguiente pendiente en el orden de la ruta (después del marcado; si no hay, el primero que quede)
+        const pend = enOrden.filter((x) => x.estado === 'pendiente' && x.id !== p.id)
+        const iRuta = enOrden.findIndex((x) => x.id === p.id)
+        const siguiente = pend.find((x) => enOrden.indexOf(x) > iRuta) ?? pend[0]
+        // Si ya no hay pendientes, se pasa a los que "No estaba" para volver a visitarlos
+        const volver = enOrden.filter((x) => x.estado === 'no_estaba' && x.id !== p.id)
+        if (nuevo === 'no_estaba') volver.push(p)
+        const destino = siguiente ?? (nuevo === 'visitado' ? volver[0] : undefined)
+        if (destino) {
+          // Se espera a que la lista se reordene (el marcado se va arriba o al final) antes de bajar hasta él
+          setTimeout(() => seleccionar(destino, true), 80)
           if (destello.current) clearTimeout(destello.current)
-          destello.current = setTimeout(() => setSeleccion((sel) => (sel === siguiente.id ? null : sel)), 1500)
+          destello.current = setTimeout(() => setSeleccion((sel) => (sel === destino.id ? null : sel)), 1500)
         } else {
           setSeleccion(null)
-          setCompletada(true)
-          setTimeout(() => setCompletada(false), 4000)
+        }
+        if (!siguiente) {
+          avisar(volver.length > 0
+            ? `Quedan ${volver.length} ${volver.length === 1 ? 'casa' : 'casas'} por volver a visitar.`
+            : 'Ruta completada: no quedan clientes pendientes.')
         }
       }
     } catch (e: any) {
@@ -481,10 +509,10 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             ListHeaderComponent={
               <View style={{ gap: 8 }}>
                 {error && <Text style={styles.error}>No se pudo cargar la ruta: {error}</Text>}
-                {completada && (
+                {aviso2 && (
                   <View style={styles.completada}>
                     <Ionicons name="checkmark-circle" size={18} color={Palette.green} />
-                    <Text style={styles.completadaText}>Ruta completada: no quedan clientes pendientes.</Text>
+                    <Text style={styles.completadaText}>{aviso2}</Text>
                   </View>
                 )}
                 {/* Leyenda de colores de las tarjetas (Ruta en curso) */}
@@ -536,6 +564,13 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               const ocupado = marcando === p.id
               return (
                 <Animated.View onLayout={(e) => arrastre.setAltura(p.id, e.nativeEvent.layout.height)} style={arrastre.estiloDe(p.id)}>
+                {/* Encabezado discreto al empezar cada grupo (Ruta en curso) */}
+                {!organizando && (() => {
+                  const i = paradas.findIndex((x) => x.id === p.id)
+                  if (i > 0 && paradas[i - 1].estado === p.estado) return null
+                  const t = p.estado === 'no_estaba' ? 'Volver a visitar' : p.estado === 'visitado' ? 'Visitados' : 'Pendientes'
+                  return <Text style={styles.grupo}>{t}</Text>
+                })()}
                 <Pressable style={[styles.card, organizando && styles.cardCompacta,
                   // En Ruta en curso el estado se ve en el color de la tarjeta: verde = estaba, naranja = no estaba
                   !organizando && styles.cardPendiente,
@@ -615,10 +650,19 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                         </Pressable>
                       </>
                     ) : (
+                      <>
+                      {/* A los que no estaban se les puede volver a visitar */}
+                      {p.estado === 'no_estaba' && (
+                        <Pressable style={[styles.boton, { backgroundColor: Palette.green }]} onPress={() => marcar(p, 'visitado')}>
+                          <Ionicons name="checkmark" size={18} color={Palette.onNavy} />
+                          <Text style={[styles.botonText, { color: Palette.onNavy }]}>Estaba</Text>
+                        </Pressable>
+                      )}
                       <Pressable style={[styles.boton, { backgroundColor: Palette.grayPill }]} onPress={() => marcar(p, 'pendiente')}>
                         <Ionicons name="arrow-undo-outline" size={16} color={Palette.navy} />
                         <Text style={[styles.botonText, { color: Palette.navy }]}>Deshacer</Text>
                       </Pressable>
+                      </>
                     )}
                     <Pressable style={[styles.boton, { backgroundColor: abierta === p.id ? Palette.navy : Palette.navySoft }]} onPress={() => alternarCuotas(p)}>
                       <Ionicons name={abierta === p.id ? 'chevron-up' : 'cash-outline'} size={17} color={abierta === p.id ? Palette.onNavy : Palette.navy} />
@@ -714,6 +758,7 @@ const styles = StyleSheet.create({
   cardPendiente: { borderColor: Palette.navySoft, borderLeftWidth: 5, borderLeftColor: Palette.navy },
   cardVisitada: { backgroundColor: Palette.greenSoft, borderColor: Palette.green, borderLeftColor: Palette.green },
   cardNoEstaba: { backgroundColor: Palette.amberSoft, borderColor: Palette.orange, borderLeftColor: Palette.orange },
+  grupo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 6, marginTop: 4 },
   completada: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.greenSoft, borderRadius: 12, padding: 10 },
   completadaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.green },
   leyenda: { flexDirection: 'row', gap: 14, paddingHorizontal: 2 },
