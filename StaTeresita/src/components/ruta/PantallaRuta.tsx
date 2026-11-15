@@ -597,12 +597,15 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                           <Text style={styles.dist}>{textoDistancia(dist)}</Text>
                         ) : null}
                       </View>
-                      {c && <DireccionCliente c={c} />}
-                      <View style={[styles.pill, { backgroundColor: e.fondo }]}>
-                        <Text style={[styles.pillText, { color: e.color }]}>
-                          {e.texto}{p.visitado_en && p.estado !== 'pendiente' ? ` · ${hora(p.visitado_en)}` : ''}
-                        </Text>
-                      </View>
+                      {c && <DireccionCliente c={c} compacta />}
+                      {/* Estado de la visita: solo en Ruta en curso */}
+                      {!organizando && (
+                        <View style={[styles.pill, { backgroundColor: e.fondo }]}>
+                          <Text style={[styles.pillText, { color: e.color }]}>
+                            {e.texto}{p.visitado_en && p.estado !== 'pendiente' ? ` · ${hora(p.visitado_en)}` : ''}
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     {puedeMover && (
                       <View style={styles.flechas}>

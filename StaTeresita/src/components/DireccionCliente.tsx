@@ -1,17 +1,20 @@
 import { Palette } from '@/constants/palette'
-import { ClienteRuta, lineaDireccion, lineaZona } from '@/lib/rutas'
+import { ClienteRuta, lineaDireccion, lineaZona, sectorDe } from '@/lib/rutas'
 import { Ionicons } from '@expo/vector-icons'
 import { StyleSheet, Text, View } from 'react-native'
 
-// Dirección de un cliente: "Calle 123 (Pasaje)", "Sector · Comuna" e indicaciones de la casa
-const DireccionCliente = ({ c }: { c: ClienteRuta }) => (
+// Dirección de un cliente: "Calle 123 (Pasaje)", "Sector · Comuna" e indicaciones de la casa.
+// `compacta`: una sola línea "Calle 123 (Pasaje), Sector" (sin repetir la zona en otra línea).
+const DireccionCliente = ({ c, compacta = false }: { c: ClienteRuta; compacta?: boolean }) => (
   <View style={{ gap: 1 }}>
     <View style={styles.dirRow}>
       <Ionicons name="location-outline" size={13} color={Palette.textMuted} />
-      <Text style={styles.dirText} numberOfLines={1}>{lineaDireccion(c) || 'Sin dirección'}</Text>
+      <Text style={styles.dirText} numberOfLines={compacta ? 2 : 1}>
+        {[lineaDireccion(c), compacta ? sectorDe(c) : ''].filter(Boolean).join(', ') || 'Sin dirección'}
+      </Text>
       {!c.dir && <View style={styles.sinZona}><Text style={styles.sinZonaText}>Sin zona</Text></View>}
     </View>
-    {!!c.dir && <Text style={styles.zonaText} numberOfLines={1}>{lineaZona(c)}</Text>}
+    {!compacta && !!c.dir && <Text style={styles.zonaText} numberOfLines={1}>{lineaZona(c)}</Text>}
     {!!c.dir?.referencia && <Text style={styles.referencia} numberOfLines={2}>{c.dir.referencia}</Text>}
   </View>
 )
