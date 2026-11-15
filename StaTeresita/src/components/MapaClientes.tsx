@@ -19,6 +19,7 @@ export default function MapaClientes({
   ubicaciones,
   onPressCliente,
   trazarRuta,
+  trazado,
   seleccionId,
   onPressUbicacion,
   miUbicacion,
@@ -90,9 +91,9 @@ export default function MapaClientes({
         );
       }}
     >
-      {trazarRuta && ubicaciones.length > 1 && (
+      {trazarRuta && ((trazado?.length ?? 0) > 1 || ubicaciones.length > 1) && (
         <Polyline
-          coordinates={ubicaciones.map((u) => ({ latitude: u.latitud, longitude: u.longitud }))}
+          coordinates={(trazado && trazado.length > 1 ? trazado : ubicaciones).map((u) => ({ latitude: u.latitud, longitude: u.longitud }))}
           strokeColor={Palette.navy}
           strokeWidth={3}
         />

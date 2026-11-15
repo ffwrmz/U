@@ -50,6 +50,7 @@ export default function MapaClientes({
   ubicaciones,
   onPressCliente,
   trazarRuta,
+  trazado,
   seleccionId,
   onPressUbicacion,
   miUbicacion,
@@ -113,14 +114,17 @@ export default function MapaClientes({
     >
       <NavigationControl position="top-right" showCompass={false} />
 
-      {trazarRuta && ubicaciones.length > 1 && (
+      {trazarRuta && ((trazado?.length ?? 0) > 1 || ubicaciones.length > 1) && (
         <Source
           id="ruta"
           type="geojson"
           data={{
             type: "Feature",
             properties: {},
-            geometry: { type: "LineString", coordinates: ubicaciones.map((u) => [u.longitud, u.latitud]) },
+            geometry: {
+              type: "LineString",
+              coordinates: (trazado && trazado.length > 1 ? trazado : ubicaciones).map((u) => [u.longitud, u.latitud]),
+            },
           }}
         >
           <Layer id="ruta-linea" type="line" paint={{ "line-color": Palette.navy, "line-width": 3 }} />

@@ -19,6 +19,8 @@ export type MapaClientesProps = {
   onPressCliente?: (clienteId: string) => void;
   /** Dibuja una línea uniendo los puntos en el orden recibido (ruta). */
   trazarRuta?: boolean;
+  /** Camino real por calles para la línea de la ruta; si no viene, se une en línea recta. */
+  trazado?: { latitud: number; longitud: number }[] | null;
   /** Punto destacado (id de UbicacionMapa): se dibuja más grande y el mapa se centra en él. */
   seleccionId?: string | null;
   /** Al tocar un punto (además de la burbuja con los datos). */

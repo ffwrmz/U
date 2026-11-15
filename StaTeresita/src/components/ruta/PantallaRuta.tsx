@@ -5,7 +5,7 @@ import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
-import { abrirComoLlegar, distanciaMetros, hayUbicacionSimulada, obtenerMiUbicacion, simularUbicacion, Punto, puntoDe, rutaSugerida, seguirMiUbicacion, textoDistancia, ubicacionesDeParadas } from '@/lib/mapa'
+import { abrirComoLlegar, distanciaMetros, hayUbicacionSimulada, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, simularUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
@@ -83,6 +83,10 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [ubicacionEstado, setUbicacionEstado] = useState<'buscando' | 'ok' | 'sin_permiso'>('buscando')
   const [ordenVista, setOrdenVista] = useState<'ruta' | 'sugerida'>('ruta')
   const [guardandoOrden, setGuardandoOrden] = useState(false)
+  // Camino por calles (OSRM) y orden sugerido en auto
+  const [camino, setCamino] = useState<RutaCalles | null>(null)
+  const [sinServicio, setSinServicio] = useState(false)
+  const [ordenAuto, setOrdenAuto] = useState<number[] | null>(null)
   // Pruebas: simular mi ubicación tocando el mapa (gerente o modo desarrollo) y panel de depuración
   const [simulando, setSimulando] = useState(hayUbicacionSimulada())
 
@@ -150,9 +154,17 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     const q = puntoDe(p.cliente)
     return miUbicacion && q ? distanciaMetros(miUbicacion, q) : null
   }
-  // Ruta sugerida: las pendientes con ubicación, ordenadas para recorrerlas desde donde estoy
+  // Ruta sugerida: las pendientes con ubicación, ordenadas para recorrerlas desde donde estoy.
+  // Si el servicio de rutas (OSRM) responde, se usa su orden por calles; si no, el cálculo en línea recta.
   const pendientesConPunto = enOrden.filter((p) => p.estado === 'pendiente' && puntoDe(p.cliente))
-  const sugerida = miUbicacion ? rutaSugerida(miUbicacion, pendientesConPunto.map((p) => puntoDe(p.cliente) as Punto)) : null
+  const sugeridaRecta = miUbicacion ? rutaSugerida(miUbicacion, pendientesConPunto.map((p) => puntoDe(p.cliente) as Punto)) : null
+  const ordenAutoValido = ordenAuto && ordenAuto.length === pendientesConPunto.length ? ordenAuto : null
+  const sugerida = sugeridaRecta && ordenAutoValido && miUbicacion ? (() => {
+    // Con el orden por calles, los tramos en línea recta se recalculan para ese orden (respaldo si falta el camino)
+    const pts = ordenAutoValido.map((i) => puntoDe(pendientesConPunto[i].cliente) as Punto)
+    const tramos = pts.map((q, k) => distanciaMetros(k === 0 ? miUbicacion : pts[k - 1], q))
+    return { orden: ordenAutoValido, tramos, total: tramos.reduce((n, x) => n + x, 0) }
+  })() : sugeridaRecta
   const sugeridas = sugerida ? sugerida.orden.map((i) => pendientesConPunto[i]) : []
   const tramoDe: Record<string, number> = {}
   sugeridas.forEach((p, k) => { tramoDe[p.id] = sugerida!.tramos[k] })
@@ -173,6 +185,43 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const enMapa = enSugerida ? [...sugeridas, ...pendientesSinPunto] : enOrden
   const ubicaciones = ubicacionesDeParadas(enMapa.map((p) => ({ cliente: p.cliente, estado: p.estado })), COLORES_MAPA)
   const ubicacionDe = (p: Parada) => ubicaciones.find((u) => u.clientes.some((c) => c.id === p.cliente_id))?.id ?? null
+
+  // Camino en auto desde mi ubicación por las paradas pendientes, en el orden que se muestra.
+  // La ubicación se redondea (~200 m) para no consultar de nuevo con cada actualización del GPS.
+  const pendientesEnVista = paradas.filter((p) => p.estado === 'pendiente' && puntoDe(p.cliente))
+  const redondear = (q: Punto) => ({ latitud: Math.round(q.latitud * 500) / 500, longitud: Math.round(q.longitud * 500) / 500 })
+  const inicioLinea = miUbicacion ? redondear(miUbicacion) : null
+  const puntosLinea = [...(inicioLinea ? [inicioLinea] : []), ...pendientesEnVista.map((p) => puntoDe(p.cliente) as Punto)]
+  const claveLinea = puntosLinea.map((q) => `${q.latitud.toFixed(5)},${q.longitud.toFixed(5)}`).join(';')
+  useEffect(() => {
+    let vigente = true
+    if (puntosLinea.length < 2) { setCamino(null); setSinServicio(false); return }
+    rutaPorCalles(puntosLinea).then((r) => {
+      if (!vigente) return
+      setCamino(r)
+      setSinServicio(!r)
+    })
+    return () => { vigente = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claveLinea])
+  // Tramo en auto que llega a cada parada pendiente (desde la anterior o desde mi ubicación)
+  const tramoAuto: Record<string, { distancia: number; duracion: number }> = {}
+  if (camino) pendientesEnVista.forEach((p, k) => {
+    const t = camino.tramos[inicioLinea ? k : k - 1]
+    if (t) tramoAuto[p.id] = t
+  })
+
+  // Orden sugerido por calles (solo al ver la ruta sugerida)
+  const clavePendientes = pendientesConPunto.map((p) => p.id).join(',')
+  const claveInicio = inicioLinea ? `${inicioLinea.latitud},${inicioLinea.longitud}` : ''
+  useEffect(() => {
+    let vigente = true
+    setOrdenAuto(null)
+    if (ordenVista !== 'sugerida' || !inicioLinea || pendientesConPunto.length < 2) return
+    ordenPorCalles(inicioLinea, pendientesConPunto.map((p) => puntoDe(p.cliente) as Punto)).then((o) => { if (vigente) setOrdenAuto(o) })
+    return () => { vigente = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordenVista, clavePendientes, claveInicio])
   const paradaSel = paradas.find((p) => p.id === seleccion)
 
   const seleccionar = (p: Parada, desdeMapa: boolean) => {
@@ -373,6 +422,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             <MapaClientes
               ubicaciones={ubicaciones}
               trazarRuta
+              trazado={camino?.trazado}
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
               miUbicacion={miUbicacion}
@@ -394,6 +444,16 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             <View style={styles.avanceFila}>
               <Text style={styles.avanceTexto}>{textoEstadoJornada(estado)} · {hechas} de {paradas.length} paradas</Text>
               <Text style={styles.avanceSub}>{visitadas} estaban · {hechas - visitadas} no estaban</Text>
+            </View>
+            <View style={styles.avanceFila}>
+              {camino ? (
+                <Text style={styles.auto}>
+                  <Ionicons name="car-outline" size={13} color={Palette.navy} /> {textoDistancia(camino.distancia)} · {textoDuracion(camino.duracion)} en auto
+                  {inicioLinea ? ' desde tu ubicación' : ''}
+                </Text>
+              ) : sinServicio ? (
+                <Text style={styles.avanceSub}>Sin conexión al servicio de rutas: se muestra línea recta y distancias aproximadas.</Text>
+              ) : null}
             </View>
             <View style={styles.track}><View style={[styles.fill, { width: `${paradas.length ? (hechas / paradas.length) * 100 : 0}%` }]} /></View>
           </View>
@@ -483,6 +543,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               const index = numeroDe(p) - 1
               // En la ruta sugerida se muestra el tramo desde la parada anterior; si no, la distancia desde mi ubicación
               const dist = p.estado !== 'pendiente' ? null : enSugerida ? (tramoDe[p.id] ?? null) : distancia(p)
+              const auto = tramoAuto[p.id]
               const e = ESTADO[p.estado] ?? ESTADO.pendiente
               const c = p.cliente
               const sel = p.id === seleccion
@@ -496,7 +557,11 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={styles.nombreFila}>
                         <Text style={[styles.nombre, { flex: 1 }]} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
-                        {dist != null && <Text style={styles.dist}>{textoDistancia(dist)}</Text>}
+                        {auto ? (
+                          <Text style={styles.dist}>{textoDistancia(auto.distancia)} · {textoDuracion(auto.duracion)}</Text>
+                        ) : dist != null ? (
+                          <Text style={styles.dist}>{textoDistancia(dist)}</Text>
+                        ) : null}
                       </View>
                       {c && <DireccionCliente c={c} />}
                       <View style={[styles.pill, { backgroundColor: e.fondo }]}>
@@ -615,6 +680,7 @@ const styles = StyleSheet.create({
   avanceFila: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   avanceTexto: { fontSize: 13, fontWeight: '800', color: Palette.text },
   avanceSub: { fontSize: 12, color: Palette.textMuted },
+  auto: { fontSize: 12, fontWeight: '700', color: Palette.navy },
   track: { height: 6, borderRadius: 3, backgroundColor: Palette.grayPill, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3, backgroundColor: Palette.green },
   content: { padding: 12, gap: 10, paddingBottom: 40 },

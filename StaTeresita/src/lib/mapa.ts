@@ -167,3 +167,103 @@ export const rutaSugerida = (inicio: Punto, puntos: Punto[]) => {
   const tramos = orden.map((_, k) => d(k - 1, k))
   return { orden, tramos, total: tramos.reduce((s, x) => s + x, 0) }
 }
+
+// ---------- Camino por calles (OSRM, servidor público de OpenStreetMap) ----------
+// Servidor de demostración gratuito y sin clave: sirve para probar, con límite de uso y sin garantías.
+// Si no responde, la app sigue mostrando la línea recta.
+const OSRM = 'https://router.project-osrm.org'
+
+export interface RutaCalles {
+  trazado: Punto[] // forma del camino para dibujar en el mapa
+  distancia: number // metros en total
+  duracion: number // segundos en total
+  tramos: { distancia: number; duracion: number }[] // de cada punto al siguiente
+}
+
+// Consulta a OSRM con tiempo máximo de 8 s y como mucho 1 consulta por segundo
+let ultimaOSRM = 0
+const consultarOSRM = async (url: string) => {
+  const espera = ultimaOSRM + 1000 - Date.now()
+  if (espera > 0) await new Promise((r) => setTimeout(r, espera))
+  ultimaOSRM = Date.now()
+  const control = new AbortController()
+  const t = setTimeout(() => control.abort(), 8000)
+  try {
+    const res = await fetch(url, { signal: control.signal, headers: { Accept: 'application/json' } })
+    if (!res.ok) throw new Error(`OSRM respondió ${res.status}`)
+    return await res.json()
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+const coordsOSRM = (puntos: Punto[]) => puntos.map((p) => `${p.longitud.toFixed(6)},${p.latitud.toFixed(6)}`).join(';')
+const cacheRutas = new Map<string, RutaCalles | null>()
+const cacheOrden = new Map<string, number[] | null>()
+
+// Camino en auto pasando por los puntos en el orden dado. Con muchas paradas se pide por bloques
+// de 25 puntos encadenados (cada bloque empieza donde terminó el anterior).
+export const rutaPorCalles = async (puntos: Punto[]): Promise<RutaCalles | null> => {
+  if (puntos.length < 2) return null
+  if (puntos.length > 25) {
+    const partes: RutaCalles[] = []
+    for (let i = 0; i < puntos.length - 1; i += 24) {
+      const r = await rutaPorCalles(puntos.slice(i, i + 25))
+      if (!r) return null
+      partes.push(r)
+    }
+    return {
+      trazado: partes.flatMap((r) => r.trazado),
+      distancia: partes.reduce((n, r) => n + r.distancia, 0),
+      duracion: partes.reduce((n, r) => n + r.duracion, 0),
+      tramos: partes.flatMap((r) => r.tramos),
+    }
+  }
+  const clave = coordsOSRM(puntos)
+  if (cacheRutas.has(clave)) return cacheRutas.get(clave) ?? null
+  try {
+    const data = await consultarOSRM(`${OSRM}/route/v1/driving/${clave}?overview=full&geometries=geojson&steps=false`)
+    const r = data?.routes?.[0]
+    if (data?.code !== 'Ok' || !r) { cacheRutas.set(clave, null); return null }
+    const ruta: RutaCalles = {
+      trazado: (r.geometry?.coordinates ?? []).map(([lng, lat]: [number, number]) => ({ latitud: lat, longitud: lng })),
+      distancia: r.distance,
+      duracion: r.duration,
+      tramos: (r.legs ?? []).map((l: any) => ({ distancia: l.distance, duracion: l.duration })),
+    }
+    cacheRutas.set(clave, ruta)
+    return ruta
+  } catch {
+    return null // sin internet o el servidor no responde: no se guarda en caché para reintentar
+  }
+}
+
+// Mejor orden en auto para visitar `puntos` partiendo desde `inicio` (sin volver al inicio).
+// Devuelve los índices de `puntos` en el orden sugerido, o null si el servicio no responde.
+export const ordenPorCalles = async (inicio: Punto, puntos: Punto[]): Promise<number[] | null> => {
+  if (puntos.length < 2 || puntos.length > 90) return null // el servidor público no acepta viajes tan largos
+  // La ubicación se redondea (~100 m) para no consultar de nuevo con cada pequeño movimiento
+  const ini = { latitud: Math.round(inicio.latitud * 1000) / 1000, longitud: Math.round(inicio.longitud * 1000) / 1000 }
+  const clave = coordsOSRM([ini, ...puntos])
+  if (cacheOrden.has(clave)) return cacheOrden.get(clave) ?? null
+  try {
+    const data = await consultarOSRM(`${OSRM}/trip/v1/driving/${clave}?source=first&roundtrip=false&destination=any&overview=false`)
+    if (data?.code !== 'Ok' || !Array.isArray(data.waypoints)) { cacheOrden.set(clave, null); return null }
+    // waypoints[i].waypoint_index = posición del punto i dentro del viaje (el 0 es mi ubicación)
+    const orden = data.waypoints
+      .map((w: any, i: number) => ({ i: i - 1, pos: w.waypoint_index as number }))
+      .filter((x: { i: number }) => x.i >= 0)
+      .sort((a: { pos: number }, b: { pos: number }) => a.pos - b.pos)
+      .map((x: { i: number }) => x.i)
+    cacheOrden.set(clave, orden)
+    return orden
+  } catch {
+    return null
+  }
+}
+
+// "12 min" / "1 h 05 min"
+export const textoDuracion = (s: number) => {
+  const min = Math.max(1, Math.round(s / 60))
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`
+}
