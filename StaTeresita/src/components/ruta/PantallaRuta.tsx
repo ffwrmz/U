@@ -322,13 +322,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         setTerminando(false)
       }
     }
-    const texto = soyGerente
-      ? 'Se iniciará la ruta de hoy para todos los caseros y pasarás a la pantalla para marcar visitas, cobrar y vender. Después ya no se podrá cambiar el orden.'
-      : 'Se guardará el orden de tu ruta.'
-    Alert.alert('Terminar organización', texto, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: soyGerente ? 'Comenzar ruta' : 'Guardar', onPress: () => comenzar() },
-    ])
+    comenzar() // sin confirmación: se inicia al tiro
   }
 
   const puedeSimular = soyGerente && !organizando
