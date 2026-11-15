@@ -155,3 +155,11 @@ export const vaciarRuta = async (jornadaId: string) => {
   const { error } = await supabase.from('ruta_paradas').delete().eq('jornada_id', jornadaId)
   if (error) throw error
 }
+
+// Orden de los caseros en las listas: el que se llama Gonzalo primero (sin importar mayúsculas ni tildes),
+// después el resto por nombre
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+export const esCaseroPrincipal = (nombre: string) => sinTildes(nombre).includes('gonzalo')
+export const ordenarCaseros = <T extends { nombre: string }>(lista: T[]) =>
+  [...lista].sort((a, b) =>
+    Number(esCaseroPrincipal(b.nombre)) - Number(esCaseroPrincipal(a.nombre)) || a.nombre.localeCompare(b.nombre, 'es'))

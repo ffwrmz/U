@@ -6,7 +6,7 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, hayUbicacionSimulada, obtenerMiUbicacion, simularUbicacion, Punto, puntoDe, rutaSugerida, seguirMiUbicacion, textoDistancia, ubicacionesDeParadas } from '@/lib/mapa'
-import { cambiarEstadoJornada, EstadoParada, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
 import { Ionicons } from '@expo/vector-icons'
@@ -125,10 +125,11 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       if (gerente) {
         const ids = Array.from(new Set(ps.map((p) => p.vendedor_id)))
         const { data: pe } = ids.length ? await supabase.from('perfiles').select('id, nombre').in('id', ids) : { data: [] }
-        const lista = ((pe as Casero[]) || []).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        const lista = ordenarCaseros((pe as Casero[]) || [])
         setCaseros(lista)
-        // Por defecto la propia ruta del gerente, si tiene; si no, la del primer casero
-        setVerDe((actual) => actual && ids.includes(actual) ? actual : ids.includes(user.id) ? user.id : lista[0]?.id ?? null)
+        // Por defecto la ruta de Gonzalo; si no está, la propia del gerente; si no, la del primer casero
+        const gonzalo = lista.find((c) => esCaseroPrincipal(c.nombre))?.id
+        setVerDe((actual) => actual && ids.includes(actual) ? actual : gonzalo ?? (ids.includes(user.id) ? user.id : lista[0]?.id ?? null))
       } else {
         setVerDe(user.id)
       }

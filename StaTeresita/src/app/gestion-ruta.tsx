@@ -3,7 +3,7 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
-  comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
+  comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
 import MapaRuta from '@/components/MapaRuta'
@@ -118,10 +118,7 @@ const GestionRuta = () => {
         const { data: fs } = await supabase.from('ubicaciones_inventario').select('nombre, responsable_id').eq('tipo', 'furgon').eq('activo', true)
         const furgonDe = (id: string) => ((fs as any[]) || []).find((f) => f.responsable_id === id)?.nombre ?? null
         // Gonzalo aparece primero; el resto por nombre
-        const primero = (n: string) => (n.trim().toLowerCase().startsWith('gonzalo') ? 0 : 1)
-        setVendedores(((vs as any[]) || [])
-          .map((v) => ({ casero_id: v.id, nombre: v.nombre, furgon: furgonDe(v.id) }))
-          .sort((a, b) => primero(a.nombre) - primero(b.nombre) || a.nombre.localeCompare(b.nombre, 'es')))
+        setVendedores(ordenarCaseros(((vs as any[]) || []).map((v) => ({ casero_id: v.id, nombre: v.nombre, furgon: furgonDe(v.id) }))))
         setCargando(false)
       }
       leer()
