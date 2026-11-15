@@ -265,7 +265,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     }
   }
 
-  const puedeSimular = soyGerente
+  const puedeSimular = soyGerente && !organizando
   const cambiarSimulacion = (activar: boolean) => {
     setSimulando(activar)
     if (!activar) { simularUbicacion(null); actualizarUbicacion() }
@@ -376,9 +376,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
               miUbicacion={miUbicacion}
-              onPressMapa={simulando ? fijarUbicacion : undefined}
+              onPressMapa={simulando && puedeSimular ? fijarUbicacion : undefined}
             />
-            {simulando && (
+            {simulando && puedeSimular && (
               <View style={styles.simulada}>
                 <Ionicons name="flask-outline" size={13} color={Palette.onNavy} />
                 <Text style={styles.simuladaText}>Ubicación simulada · toca el mapa para moverte</Text>
@@ -415,7 +415,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                   </View>
                 )}
 
-                {/* Ruta sugerida desde mi ubicación */}
+                {/* Ruta sugerida desde mi ubicación (solo en Ruta en curso) */}
+                {!organizando && (
                 <View style={styles.cerca}>
                   <View style={styles.cercaTop}>
                     <Ionicons name="locate" size={16} color={Palette.navy} />
@@ -449,8 +450,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     </>
                   )}
                 </View>
+                )}
 
-                {/* Pruebas: simular mi ubicación tocando el mapa */}
+                {/* Pruebas: simular mi ubicación tocando el mapa (solo en Ruta en curso) */}
                 {puedeSimular && (
                   <View style={styles.pruebas}>
                     <Text style={styles.pruebasText}>Simular mi ubicación</Text>
