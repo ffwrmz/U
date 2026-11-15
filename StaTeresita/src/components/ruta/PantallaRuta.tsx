@@ -323,20 +323,28 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   }
 
 
+  const destello = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [completada, setCompletada] = useState(false)
+
   const marcar = async (p: Parada, nuevo: EstadoParada) => {
     setMarcando(p.id)
     try {
       await marcarParada(p.id, nuevo)
       setTodas((l) => l.map((x) => (x.id === p.id ? { ...x, estado: nuevo, visitado_en: nuevo === 'pendiente' ? null : new Date().toISOString() } : x)))
-      // Al marcar Estaba / No estaba, pasa al siguiente cliente pendiente (en el mapa y en la lista)
-      if (nuevo !== 'pendiente') {
+      // Al marcar "Estaba", pasa al siguiente cliente pendiente: la lista baja hasta él, se destaca un momento
+      // y el mapa se centra en su casa. Si no quedan pendientes, avisa "Ruta completada" (sin bloquear).
+      if (nuevo === 'visitado') {
+        if (abierta === p.id) setAbierta(null)
         const i = paradas.findIndex((x) => x.id === p.id)
         const siguiente = [...paradas.slice(i + 1), ...paradas.slice(0, i)].find((x) => x.estado === 'pendiente' && x.id !== p.id)
         if (siguiente) {
-          setAbierta(null)
           seleccionar(siguiente, true)
+          if (destello.current) clearTimeout(destello.current)
+          destello.current = setTimeout(() => setSeleccion((sel) => (sel === siguiente.id ? null : sel)), 1500)
         } else {
           setSeleccion(null)
+          setCompletada(true)
+          setTimeout(() => setCompletada(false), 4000)
         }
       }
     } catch (e: any) {
@@ -473,6 +481,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             ListHeaderComponent={
               <View style={{ gap: 8 }}>
                 {error && <Text style={styles.error}>No se pudo cargar la ruta: {error}</Text>}
+                {completada && (
+                  <View style={styles.completada}>
+                    <Ionicons name="checkmark-circle" size={18} color={Palette.green} />
+                    <Text style={styles.completadaText}>Ruta completada: no quedan clientes pendientes.</Text>
+                  </View>
+                )}
                 {/* Leyenda de colores de las tarjetas (Ruta en curso) */}
                 {!organizando && paradas.length > 0 && (
                   <View style={styles.leyenda}>
@@ -700,6 +714,8 @@ const styles = StyleSheet.create({
   cardPendiente: { borderColor: Palette.navySoft, borderLeftWidth: 5, borderLeftColor: Palette.navy },
   cardVisitada: { backgroundColor: Palette.greenSoft, borderColor: Palette.green, borderLeftColor: Palette.green },
   cardNoEstaba: { backgroundColor: Palette.amberSoft, borderColor: Palette.orange, borderLeftColor: Palette.orange },
+  completada: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.greenSoft, borderRadius: 12, padding: 10 },
+  completadaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.green },
   leyenda: { flexDirection: 'row', gap: 14, paddingHorizontal: 2 },
   leyendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   leyendaPunto: { width: 10, height: 10, borderRadius: 5 },
