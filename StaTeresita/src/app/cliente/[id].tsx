@@ -5,7 +5,7 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
-import { abrirWhatsApp as abrirWhatsAppCon } from '@/lib/whatsapp'
+import { abrirWhatsApp as abrirWhatsAppCon, tieneWhatsapp } from '@/lib/whatsapp'
 import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -246,7 +246,7 @@ const HistorialCliente = () => {
               <View style={{ flex: 1 }}>
                 <Dato icono="call-outline" texto={cliente.telefono || 'Sin teléfono'} />
               </View>
-              {cliente.telefono ? (
+              {tieneWhatsapp(cliente.telefono) ? (
                 <Pressable style={({ pressed }) => [styles.botonWhatsApp, pressed && { opacity: 0.8 }]} onPress={abrirWhatsApp}
                   accessibilityLabel="Escribir por WhatsApp" hitSlop={8}>
                   <Ionicons name="logo-whatsapp" size={22} color={Palette.onNavy} />

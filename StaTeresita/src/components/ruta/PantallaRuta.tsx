@@ -8,7 +8,7 @@ import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
-import { abrirWhatsApp } from '@/lib/whatsapp'
+import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
 import { useFocusEffect, useRouter } from 'expo-router'
@@ -549,7 +549,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                           <Ionicons name="person-outline" size={15} color={Palette.navy} />
                         </Pressable>
                       )}
-                      {!organizando && c?.telefono ? (
+                      {!organizando && c && tieneWhatsapp(c.telefono) ? (
                         <Pressable style={[styles.icono, { backgroundColor: Palette.green }]} onPress={() => abrirWhatsApp(c.telefono)} hitSlop={6} accessibilityLabel="Escribir por WhatsApp">
                           <Ionicons name="logo-whatsapp" size={18} color={Palette.onNavy} />
                         </Pressable>

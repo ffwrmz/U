@@ -4,7 +4,7 @@ import MapaRuta from '@/components/MapaRuta'
 import { Palette } from '@/constants/palette'
 import { EstadoParada, Jornada, listarParadas, marcarParada, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
-import { abrirWhatsApp } from '@/lib/whatsapp'
+import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { abrirComoLlegar } from '@/lib/mapa'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
@@ -149,7 +149,7 @@ const MiRuta = () => {
                     <Text style={styles.nombre} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
                     {c && <DireccionCliente c={c} />}
                   </Pressable>
-                  {c?.telefono ? (
+                  {c && tieneWhatsapp(c.telefono) ? (
                     <Pressable style={({ pressed }) => [styles.botonWhatsApp, pressed && { opacity: 0.8 }]}
                       onPress={() => abrirWhatsApp(c.telefono)} accessibilityLabel="Escribir por WhatsApp" hitSlop={8}>
                       <Ionicons name="logo-whatsapp" size={20} color={Palette.onNavy} />
