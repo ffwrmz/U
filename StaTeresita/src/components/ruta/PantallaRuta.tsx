@@ -237,26 +237,28 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     if (p) seleccionar(p, true)
   }
 
-  // Guarda el orden sugerido: primero las ya marcadas (en su orden), luego la ruta sugerida y al final las sin ubicación
+  // Etiquetas "Orden de la ruta" / "Ruta sugerida desde mi ubicación": al elegir la sugerida se aplica y se guarda
+  // al tiro (sin preguntar), recordando el orden anterior; al volver a "Orden de la ruta" se restaura ese orden.
   const puedeReordenar = (esMia || soyGerente) && estado !== 'finalizada'
-  const usarOrdenSugerido = () => {
-    if (!sugerida) return
-    Alert.alert('Usar este orden', 'Se cambiará el orden de la ruta de hoy al orden sugerido desde tu ubicación.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Usar este orden', onPress: async () => {
-        setGuardandoOrden(true)
-        try {
-          const ids = [...yaMarcadas, ...sugeridas, ...pendientesSinPunto].map((p) => p.id)
-          await reordenarParadas(ids)
-          setTodas((l) => l.map((x) => (ids.includes(x.id) ? { ...x, orden: ids.indexOf(x.id) + 1 } : x)))
-          setOrdenVista('ruta')
-        } catch (e: any) {
-          Alert.alert('Error', e.message ?? String(e))
-        } finally {
-          setGuardandoOrden(false)
-        }
-      } },
-    ])
+  const ordenAnterior = useRef<string[] | null>(null)
+  const guardarOrden = async (ids: string[]) => {
+    setTodas((l) => l.map((x) => (ids.includes(x.id) ? { ...x, orden: ids.indexOf(x.id) + 1 } : x)))
+    setGuardandoOrden(true)
+    try { await reordenarParadas(ids) } catch (e: any) { Alert.alert('Error', e.message ?? String(e)); cargar() }
+    finally { setGuardandoOrden(false) }
+  }
+  const elegirOrden = (k: 'ruta' | 'sugerida') => {
+    if (k === ordenVista) return
+    setOrdenVista(k)
+    if (!puedeReordenar) return // viendo la ruta de otro casero: solo cambia la vista
+    if (k === 'sugerida' && sugerida) {
+      ordenAnterior.current = enOrden.map((p) => p.id)
+      guardarOrden([...yaMarcadas, ...sugeridas, ...pendientesSinPunto].map((p) => p.id))
+    } else if (k === 'ruta' && ordenAnterior.current) {
+      const previo = ordenAnterior.current.filter((id) => enOrden.some((p) => p.id === id))
+      ordenAnterior.current = null
+      guardarOrden(previo)
+    }
   }
 
   // Organizar: subir / bajar paradas (antes de iniciar la ruta)
@@ -286,6 +288,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     const ids = [...yaMarcadas, ...nueva.filter((x) => x.estado === 'pendiente')].map((x) => x.id)
     setTodas((l) => l.map((x) => (ids.includes(x.id) ? { ...x, orden: ids.indexOf(x.id) + 1 } : x)))
     setOrdenVista('ruta')
+    ordenAnterior.current = null // el orden arrastrado a mano pasa a ser el de la ruta
     try {
       await reordenarParadas(ids)
     } catch (e: any) {
@@ -302,10 +305,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [terminando, setTerminando] = useState(false)
   const terminarOrganizacion = () => {
     if (!jornada) return
-    const comenzar = async (guardarSugerido: boolean) => {
+    const comenzar = async () => {
       setTerminando(true)
       try {
-        if (guardarSugerido && sugerida) await reordenarParadas([...yaMarcadas, ...sugeridas, ...pendientesSinPunto].map((p) => p.id))
         if (soyGerente) {
           await cambiarEstadoJornada(jornada.id, 'en_curso')
           router.replace('/ruta-en-curso' as any)
@@ -323,18 +325,10 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     const texto = soyGerente
       ? 'Se iniciará la ruta de hoy para todos los caseros y pasarás a la pantalla para marcar visitas, cobrar y vender. Después ya no se podrá cambiar el orden.'
       : 'Se guardará el orden de tu ruta.'
-    if (enSugerida && sugeridas.length > 1) {
-      Alert.alert('Terminar organización', texto + '\n\n¿Quieres guardar el orden sugerido desde tu ubicación?', [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sin cambiar el orden', onPress: () => comenzar(false) },
-        { text: 'Guardar sugerido', onPress: () => comenzar(true) },
-      ])
-    } else {
-      Alert.alert('Terminar organización', texto, [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: soyGerente ? 'Comenzar ruta' : 'Guardar', onPress: () => comenzar(false) },
-      ])
-    }
+    Alert.alert('Terminar organización', texto, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: soyGerente ? 'Comenzar ruta' : 'Guardar', onPress: () => comenzar() },
+    ])
   }
 
   const puedeSimular = soyGerente && !organizando
@@ -550,19 +544,19 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
 
                 {/* Orden de la lista: el guardado o el sugerido desde mi ubicación */}
                 <View style={styles.ordenFila}>
-                  {([['ruta', 'Orden de la ruta'], ['sugerida', 'Ruta sugerida desde mi ubicación']] as const).map(([k, t]) => (
-                    <Pressable key={k} style={[styles.chip, ordenVista === k && styles.chipActivo, k === 'sugerida' && !sugerida && { opacity: 0.5 }]}
-                      disabled={k === 'sugerida' && !sugerida} onPress={() => setOrdenVista(k)}>
-                      <Text style={[styles.chipText, ordenVista === k && { color: Palette.onNavy }]}>{t}</Text>
-                    </Pressable>
-                  ))}
+                  {([['ruta', 'Orden de la ruta'], ['sugerida', 'Ruta sugerida desde mi ubicación']] as const).map(([k, t]) => {
+                    const sinUbicacion = k === 'sugerida' && !sugerida
+                    return (
+                      <Pressable key={k} style={[styles.chip, ordenVista === k && styles.chipActivo, sinUbicacion && { opacity: 0.5 }]}
+                        disabled={sinUbicacion || guardandoOrden} onPress={() => elegirOrden(k)}>
+                        <Text style={[styles.chipText, ordenVista === k && { color: Palette.cream }]}>
+                          {sinUbicacion ? 'Ruta sugerida (activa la ubicación)' : t}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                  {guardandoOrden && <ActivityIndicator size="small" color={Palette.navy} />}
                 </View>
-                {enSugerida && puedeReordenar && sugeridas.length > 1 && (
-                  <Pressable style={[styles.usarOrden, guardandoOrden && { opacity: 0.6 }]} disabled={guardandoOrden} onPress={usarOrdenSugerido}>
-                    {guardandoOrden ? <ActivityIndicator size="small" color={Palette.onNavy} /> : <Ionicons name="swap-vertical" size={16} color={Palette.onNavy} />}
-                    <Text style={styles.usarOrdenText}>Usar este orden en la ruta</Text>
-                  </Pressable>
-                )}
               </View>
             }
             ListEmptyComponent={!error && jornada ? <Text style={styles.vacio}>No hay clientes en esta ruta hoy.</Text> : undefined}
