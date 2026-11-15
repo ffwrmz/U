@@ -163,7 +163,6 @@ const GestionRuta = () => {
         { text: 'Cancelar', style: 'cancel' },
         { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => ejecutar(async () => {
           setJornada(await cambiarEstadoJornada(jornada.id, nuevo))
-          if (iniciar) router.push('../ruta-en-curso') // al iniciar se abre la ruta en curso
         }) },
       ]
     )
@@ -253,9 +252,9 @@ const GestionRuta = () => {
               {ocupado && <ActivityIndicator size="small" color={Palette.onNavy} />}
               {soyGerente && jornada && estado !== 'finalizada' && (
                 <Pressable style={styles.jornadaBtn} disabled={ocupado}
-                  onPress={() => cambiarEstado(estado === 'preparacion' ? 'en_curso' : 'finalizada')}>
+                  onPress={() => (estado === 'preparacion' ? router.push('../organizar-ruta') : cambiarEstado('finalizada'))}>
                   <Ionicons name={estado === 'preparacion' ? 'play' : 'stop'} size={13} color={Palette.onNavy} />
-                  <Text style={styles.jornadaBtnText}>{estado === 'preparacion' ? 'Iniciar ruta' : 'Finalizar ruta'}</Text>
+                  <Text style={styles.jornadaBtnText}>{estado === 'preparacion' ? 'Organizar e iniciar ruta' : 'Finalizar ruta'}</Text>
                 </Pressable>
               )}
             </View>

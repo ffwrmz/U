@@ -106,6 +106,12 @@ const MiRuta = () => {
                 <View style={styles.track}><View style={[styles.fill, { width: `${progreso * 100}%` }]} /></View>
                 <Text style={styles.resumenSub}>{visitadas} visitadas · {hechas - visitadas} no estaban · {paradas.length - hechas} pendientes</Text>
               </View>
+              {estado === 'preparacion' && paradas.length > 0 && (
+                <Pressable style={[styles.verMapa, { backgroundColor: Palette.orange }]} onPress={() => router.push('/organizar-ruta' as any)}>
+                  <Ionicons name="list-outline" size={18} color={Palette.onNavy} />
+                  <Text style={[styles.verMapaText, { color: Palette.onNavy }]}>Organizar ruta</Text>
+                </Pressable>
+              )}
               {paradas.length > 0 && (
                 <Pressable style={styles.verMapa} onPress={() => setVerMapa(true)}>
                   <Ionicons name="map-outline" size={18} color={Palette.navy} />

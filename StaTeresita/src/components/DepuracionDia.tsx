@@ -3,6 +3,7 @@ import { Palette } from '@/constants/palette'
 import { hayUbicacionSimulada, Punto, simularUbicacion } from '@/lib/mapa'
 import { cambiarEstadoJornada, Jornada, reiniciarJornada, reiniciarJornadaHoy, reiniciarVisitas, textoEstadoJornada, vaciarRuta } from '@/lib/rutas'
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -20,6 +21,7 @@ interface Props {
 // Depuración del día (solo gerente): herramientas para probar las rutas.
 // Cambian la jornada y las paradas de HOY en Supabase; la ubicación simulada solo vive en este teléfono.
 const DepuracionDia = ({ visible, jornada, casas = [], onClose, onCambio }: Props) => {
+  const router = useRouter()
   const [ocupado, setOcupado] = useState(false)
   const [, refrescar] = useState(0)
 
@@ -70,6 +72,9 @@ const DepuracionDia = ({ visible, jornada, casas = [], onClose, onCambio }: Prop
           <Boton icono="reload-circle-outline" color={Palette.orange} texto="Reiniciar ruta de hoy"
             sub="Todas las paradas vuelven a Pendiente y la jornada a 'En preparación'. No borra paradas, ventas ni pagos."
             onPress={() => hacer('Reiniciar ruta de hoy', 'Las visitas de hoy quedarán pendientes y la ruta como no iniciada, para probarla de nuevo.', () => reiniciarJornadaHoy(jornada!.id))} />
+
+          <Boton icono="list-outline" texto="Ir a organizar ruta" sub="Abre la pantalla para ordenar la ruta y comenzarla (si la jornada está en preparación)."
+            onPress={() => { onClose(); router.push('/organizar-ruta' as any) }} />
 
           <Text style={styles.seccion}>Jornada</Text>
           <Boton icono="refresh" texto="Volver a 'En preparación'" sub="Como si la ruta no se hubiera iniciado. Se puede volver a editar e iniciar."

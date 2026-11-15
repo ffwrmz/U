@@ -118,7 +118,7 @@ const HomeScreen = () => {
         { text: 'Cancelar', style: 'cancel' },
         { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => {
           cambiarEstadoJornada(jornada.id, nuevo)
-            .then((j) => { setJornada(j); if (iniciar) router.push('../ruta-en-curso') }) // al iniciar se abre la ruta en curso
+            .then(setJornada)
             .catch((e) => Alert.alert('Error', e.message))
         } },
       ]
@@ -149,9 +149,9 @@ const HomeScreen = () => {
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
                 {jornada?.estado === 'preparacion' && (
-                  <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('en_curso')}>
+                  <Pressable style={styles.jornadaBtn} onPress={() => router.push('../organizar-ruta')}>
                     <Ionicons name="play" size={13} color={Palette.onNavy} />
-                    <Text style={styles.jornadaBtnText}>Iniciar ruta</Text>
+                    <Text style={styles.jornadaBtnText}>Organizar e iniciar ruta</Text>
                   </Pressable>
                 )}
                 {jornada?.estado === 'en_curso' && (
@@ -210,7 +210,10 @@ const HomeScreen = () => {
           {rolUsuario && (!soyGerente || miRuta.total > 0) && (
             <Pressable
               style={({ pressed }) => [styles.summaryCard, soyGerente && { marginTop: 12 }, pressed && styles.cardPressed]}
-              onPress={() => router.push(miRuta.estado === 'en_curso' ? '../ruta-en-curso' : '../mi-ruta')}
+              onPress={() => router.push(
+                miRuta.estado === 'en_curso' ? '../ruta-en-curso'
+                : miRuta.estado === 'preparacion' && miRuta.total > 0 ? '../organizar-ruta'
+                : '../mi-ruta')}
             >
               <View style={styles.sectionRow}>
                 <Text style={styles.summaryLabel}>Mi ruta de hoy · {textoEstadoJornada(miRuta.estado)}</Text>
