@@ -50,6 +50,8 @@ export default function MapaClientes({
   ubicaciones,
   onPressCliente,
   trazarRuta,
+  seleccionId,
+  onPressUbicacion,
 }: MapaClientesProps) {
   const mapRef = useRef<MapRef>(null);
   const [listo, setListo] = useState(false);
@@ -82,6 +84,14 @@ export default function MapaClientes({
   useEffect(() => {
     if (listo) encuadrar();
   }, [listo, encuadrar]);
+
+  // Centra el mapa en el punto seleccionado
+  useEffect(() => {
+    const u = ubicaciones.find((x) => x.id === seleccionId);
+    if (!u || !listo || !mapRef.current) return;
+    mapRef.current.flyTo({ center: [u.longitud, u.latitud], zoom: 16, duration: 300 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccionId, listo]);
 
   if (!enNavegador) return null;
 
@@ -123,15 +133,18 @@ export default function MapaClientes({
           color={u.etiqueta ? undefined : colorDe(u, Palette.green, Palette.amber)}
           onClick={(e) => {
             e.originalEvent.stopPropagation();
-            setSeleccion(u);
+            if (onPressUbicacion) onPressUbicacion(u);
+            else setSeleccion(u);
           }}
         >
           {u.etiqueta ? (
             <div
               style={{
-                minWidth: 28, height: 28, borderRadius: 14, padding: "0 6px", boxSizing: "border-box",
+                minWidth: u.id === seleccionId ? 38 : 28, height: u.id === seleccionId ? 38 : 28,
+                borderRadius: 19, padding: "0 6px", boxSizing: "border-box",
                 display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-                background: colorDe(u, Palette.green, Palette.amber), border: "2px solid #fff",
+                background: colorDe(u, Palette.green, Palette.amber),
+                border: u.id === seleccionId ? `3px solid ${Palette.orange}` : "2px solid #fff",
                 color: "#fff", fontWeight: 800, fontSize: 13, fontFamily: "system-ui, sans-serif",
               }}
             >

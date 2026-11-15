@@ -41,6 +41,8 @@ const MiRuta = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
       const j = await obtenerOCrearJornadaHoy(false)
+      // Con la ruta iniciada se trabaja en la pantalla Ruta en curso (mapa + botones rápidos)
+      if (j?.estado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
       setJornada(j)
       setParadas(j ? await listarParadas(j.id, user.id) : [])
       setError(null)
@@ -50,7 +52,7 @@ const MiRuta = () => {
       setCargando(false)
       setRefrescando(false)
     }
-  }, [])
+  }, [router])
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
 

@@ -159,7 +159,10 @@ const GestionRuta = () => {
       iniciar ? 'Al iniciar se bloquean los clientes asignados y su orden.' : 'Se cerrará la jornada de hoy.',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => ejecutar(async () => setJornada(await cambiarEstadoJornada(jornada.id, nuevo))) },
+        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => ejecutar(async () => {
+          setJornada(await cambiarEstadoJornada(jornada.id, nuevo))
+          if (iniciar) router.push('../ruta-en-curso') // al iniciar se abre la ruta en curso
+        }) },
       ]
     )
   }
