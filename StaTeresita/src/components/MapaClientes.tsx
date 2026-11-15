@@ -82,7 +82,8 @@ export default function MapaClientes({
         if ((e.nativeEvent as any).action === "marker-press") return;
         onPressMapa({ latitud: e.nativeEvent.coordinate.latitude, longitud: e.nativeEvent.coordinate.longitude });
       } : undefined}
-      showsMyLocationButton={!!miUbicacion}
+      showsMyLocationButton={false}
+      toolbarEnabled={false}
       onLongPress={(e) => {
         const c = e.nativeEvent.coordinate;
         Alert.alert(

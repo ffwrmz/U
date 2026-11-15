@@ -161,7 +161,7 @@ export default function MapaClientes({
         </Marker>
       ))}
 
-      {miUbicacion && (
+      {listo && miUbicacion && (
         <Marker longitude={miUbicacion.longitud} latitude={miUbicacion.latitud} anchor="center">
           <div
             title="Tú estás aquí"
