@@ -1,5 +1,6 @@
 // Zonas (comuna > sector > pasaje / calle) y direcciones de clientes.
 // Tablas: comunas, sectores, pasajes, calles, direcciones (ver supabase/migrations/*_zonas.sql).
+import { geocodificarDireccion } from '@/lib/geocoding'
 import { supabase } from '@/lib/supabase'
 
 export interface Comuna { id: string; nombre: string; activo: boolean }
@@ -99,4 +100,66 @@ export const direccionDeCliente = async (cat: Catalogo, clienteId: string): Prom
     numero: d.numero ?? '',
     referencia: d.referencia ?? '',
   }
+}
+
+// ---------- Ubicación en el mapa (latitud / longitud de una dirección) ----------
+// El cálculo lo hace geocodificarDireccion (lib/geocoding.ts, de kaffee000).
+// Las coordenadas se guardan con la función set_ubicacion_direccion de Supabase
+// (dueño o vendedor activos; solo cambia latitud y longitud).
+
+export const REGION = 'Maule'
+
+export const guardarUbicacion = async (direccionId: string, latitud: number, longitud: number) => {
+  const { error } = await supabase.rpc('set_ubicacion_direccion', { p_direccion_id: direccionId, p_lat: latitud, p_lng: longitud })
+  if (error) throw error
+}
+
+type FilaDireccion = {
+  id: string; numero: string | null; latitud: number | null; longitud: number | null
+  sector: { nombre: string; comuna: { nombre: string } | null } | null
+  calle: { nombre: string } | null
+  pasaje: { nombre: string } | null
+}
+const SELECT_DIRECCION = 'id, numero, latitud, longitud, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre )'
+
+// Calcula y guarda la ubicación de una dirección.
+// 'ya' = ya tenía coordenadas, 'ok' = se ubicó, 'no' = no se encontró una ubicación confiable.
+export const ubicarDireccion = async (direccionId: string, forzar = false): Promise<'ya' | 'ok' | 'no'> => {
+  const { data, error } = await supabase.from('direcciones').select(SELECT_DIRECCION).eq('id', direccionId).maybeSingle()
+  if (error) throw error
+  const d = data as unknown as FilaDireccion | null
+  if (!d) return 'no'
+  if (!forzar && d.latitud != null && d.longitud != null) return 'ya'
+  return (await ubicarFila(d)) ? 'ok' : 'no'
+}
+
+const ubicarFila = async (d: FilaDireccion) => {
+  const coords = await geocodificarDireccion({
+    pais: 'Chile',
+    region: REGION,
+    ciudad: d.sector?.comuna?.nombre ?? '',
+    sector: d.sector?.nombre ?? null,
+    calle: d.calle?.nombre ?? '',
+    pasaje: d.pasaje?.nombre ?? null,
+    numero: d.numero,
+  })
+  if (!coords) return false
+  await guardarUbicacion(d.id, coords.latitud, coords.longitud)
+  return true
+}
+
+// Ubica todas las direcciones que aún no tienen coordenadas (OpenStreetMap permite 1 consulta por segundo,
+// así que puede tardar). Llama a onProgreso después de cada dirección.
+export const ubicarPendientes = async (
+  onProgreso?: (p: { hechas: number; total: number; ubicadas: number }) => void,
+) => {
+  const { data, error } = await supabase.from('direcciones').select(SELECT_DIRECCION).or('latitud.is.null,longitud.is.null')
+  if (error) throw error
+  const lista = ((data as unknown as FilaDireccion[]) || [])
+  let ubicadas = 0
+  for (let i = 0; i < lista.length; i++) {
+    try { if (await ubicarFila(lista[i])) ubicadas++ } catch {}
+    onProgreso?.({ hechas: i + 1, total: lista.length, ubicadas })
+  }
+  return { total: lista.length, ubicadas }
 }

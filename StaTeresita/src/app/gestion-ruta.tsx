@@ -6,9 +6,10 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
+import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
-import { useFocusEffect } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -39,6 +40,8 @@ const VISITA = {
 // Ruta del día guardada en Supabase (jornadas + ruta_paradas, ver lib/rutas.ts).
 // También lee el rol, los trabajadores, su furgón y los clientes con su dirección por zonas.
 const GestionRuta = () => {
+  const router = useRouter()
+  const [mapaDe, setMapaDe] = useState<{ casero_id: string; nombre: string } | null>(null)
   const [soyGerente, setSoyGerente] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
   const [paradas, setParadas] = useState<Parada[]>([])
@@ -294,6 +297,11 @@ const GestionRuta = () => {
                     <Text style={styles.caseroNombre}>{c.nombre}</Text>
                     <Text style={styles.sub}>{c.furgon ? `${c.furgon} · ` : ''}{lista.length} clientes</Text>
                   </View>
+                  {lista.length > 0 && (
+                    <Pressable style={styles.botonMapa} onPress={() => setMapaDe(c)} accessibilityLabel={`Ver la ruta de ${c.nombre} en el mapa`} hitSlop={4}>
+                      <Ionicons name="map-outline" size={18} color={Palette.navy} />
+                    </Pressable>
+                  )}
                   {editable && (
                     <Pressable style={[styles.botonChico, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => abrirAsignar(c)}>
                       <Ionicons name="add" size={16} color={Palette.onNavy} />
@@ -433,6 +441,13 @@ const GestionRuta = () => {
           )}
         </SafeAreaView>
       </Modal>
+      <MapaRuta
+        visible={!!mapaDe}
+        titulo={`Ruta de ${mapaDe?.nombre ?? ''}`}
+        paradas={mapaDe ? paradasDe(mapaDe.casero_id).map((p) => ({ cliente: p.cliente ?? clienteDe(p.cliente_id) ?? null, estado: p.estado })) : []}
+        onClose={() => setMapaDe(null)}
+        onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
+      />
     </SafeAreaView>
   )
 }
@@ -460,6 +475,7 @@ const styles = StyleSheet.create({
   sub: { fontSize: 13, color: Palette.textMuted },
   botonChico: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navy, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   botonChicoText: { color: Palette.onNavy, fontSize: 13, fontWeight: '700' },
+  botonMapa: { width: 36, height: 36, borderRadius: 10, backgroundColor: Palette.navySoft, alignItems: 'center', justifyContent: 'center' },
   parada: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 14, padding: 10 },
   numero: { width: 26, height: 26, borderRadius: 13, backgroundColor: Palette.grayPill, alignItems: 'center', justifyContent: 'center' },
   numeroText: { fontSize: 12, fontWeight: '700', color: Palette.textMuted },

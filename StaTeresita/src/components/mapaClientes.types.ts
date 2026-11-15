@@ -1,0 +1,34 @@
+// Tipos compartidos por el mapa de clientes (versión nativa y web).
+// Basado en el mapa de kaffee000 (github.com/kaffee000/StaTeresita).
+
+/** Un punto del mapa = una dirección con coordenadas guardadas en `direcciones`. */
+export type UbicacionMapa = {
+  id: string; // direcciones.id
+  latitud: number;
+  longitud: number;
+  direccion: string; // "Calle 123, Pasaje, Sector, Comuna"
+  clientes: { id: string; nombre: string; deuda: number }[];
+  /** Texto dentro del marcador, por ejemplo el número de parada ("1", "2"...). */
+  etiqueta?: string;
+  /** Color del marcador; por defecto naranja si debe y verde si está al día. */
+  color?: string;
+};
+
+export type MapaClientesProps = {
+  ubicaciones: UbicacionMapa[];
+  onPressCliente?: (clienteId: string) => void;
+  /** Dibuja una línea uniendo los puntos en el orden recibido (ruta). */
+  trazarRuta?: boolean;
+};
+
+// Centro de Molina: vista inicial cuando aún no hay puntos
+export const CENTRO_INICIAL = { latitud: -35.114, longitud: -71.282 };
+
+export const titulo = (u: UbicacionMapa) =>
+  u.clientes.length === 1 ? u.clientes[0].nombre : `${u.clientes.length} clientes`;
+
+export const deudaTotal = (u: UbicacionMapa) =>
+  u.clientes.reduce((s, c) => s + c.deuda, 0);
+
+export const colorDe = (u: UbicacionMapa, verde: string, naranja: string) =>
+  u.color ?? (deudaTotal(u) > 0 ? naranja : verde);

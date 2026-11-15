@@ -2,7 +2,7 @@ import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { supabase } from '@/lib/supabase'
-import { Catalogo, catalogoVacio, cargarCatalogo, Comuna, Sector } from '@/lib/zonas'
+import { Catalogo, catalogoVacio, cargarCatalogo, Comuna, Sector, ubicarPendientes } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
 import { useCallback, useState } from 'react'
@@ -26,6 +26,23 @@ const Zonas = () => {
   const [sector, setSector] = useState<Sector | null>(null)
   const [edicion, setEdicion] = useState<Edicion | null>(null)
   const [guardando, setGuardando] = useState(false)
+  const [ubicando, setUbicando] = useState<{ hechas: number; total: number; ubicadas: number } | null>(null)
+
+  // Calcula la ubicación en el mapa de las direcciones que aún no tienen (1 por segundo)
+  const ubicarTodas = async () => {
+    setUbicando({ hechas: 0, total: 0, ubicadas: 0 })
+    try {
+      const r = await ubicarPendientes(setUbicando)
+      Alert.alert('Ubicación en el mapa', r.total === 0
+        ? 'Todas las direcciones ya tienen ubicación.'
+        : `Se ubicaron ${r.ubicadas} de ${r.total} direcciones.` +
+          (r.ubicadas < r.total ? '\nLas demás no se encontraron con seguridad; se pueden ubicar después desde la ruta del casero.' : ''))
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? String(e))
+    } finally {
+      setUbicando(null)
+    }
+  }
 
   const cargar = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -154,7 +171,17 @@ const Zonas = () => {
               </Text>
             </Pressable>
           ) : (
-            <Text style={styles.ayuda}>Organiza las direcciones: comuna → sector → pasajes y calles. Desactivar oculta la opción en los formularios sin borrar nada.</Text>
+            <>
+              <Text style={styles.ayuda}>Organiza las direcciones: comuna → sector → pasajes y calles. Desactivar oculta la opción en los formularios sin borrar nada.</Text>
+              <Pressable style={[styles.ubicar, ubicando && { opacity: 0.7 }]} disabled={!!ubicando} onPress={ubicarTodas}>
+                {ubicando ? <ActivityIndicator size="small" color={Palette.navy} /> : <Ionicons name="location-outline" size={18} color={Palette.navy} />}
+                <Text style={styles.ubicarText}>
+                  {ubicando
+                    ? (ubicando.total ? `Ubicando ${ubicando.hechas} de ${ubicando.total}...` : 'Buscando direcciones...')
+                    : 'Ubicar en el mapa las direcciones sin coordenadas'}
+                </Text>
+              </Pressable>
+            </>
           )}
           {contenido}
         </ScrollView>
@@ -188,6 +215,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 16, gap: 10, paddingBottom: 40 },
   ayuda: { fontSize: 13, color: Palette.textMuted },
+  ubicar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  ubicarText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.navy },
   migas: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   migasText: { fontSize: 15, fontWeight: '700', color: Palette.navy, flex: 1 },
   seccion: { fontSize: 13, fontWeight: '700', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 8 },

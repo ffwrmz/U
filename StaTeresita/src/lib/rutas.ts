@@ -9,6 +9,9 @@ export interface Jornada { id: string; fecha: string; estado: EstadoJornada; ini
 
 // Dirección estructurada de un cliente (clientes.direccion_id → direcciones → sector/comuna, calle, pasaje)
 export interface Dir {
+  id?: string
+  latitud?: number | null
+  longitud?: number | null
   numero: string | null
   referencia: string | null
   sector: { nombre: string; comuna: { nombre: string } | null } | null
@@ -30,7 +33,7 @@ export interface Parada {
 
 // Columnas de un cliente con su dirección por zonas (para usar dentro de un select)
 export const SELECT_CLIENTE =
-  'id, nombre, telefono, direccion, dir:direcciones ( numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
+  'id, nombre, telefono, direccion, dir:direcciones ( id, latitud, longitud, numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
 
 const SELECT_PARADA = `id, vendedor_id, cliente_id, orden, estado, visitado_en, nota, cliente:clientes ( ${SELECT_CLIENTE} )`
 const SELECT_JORNADA = 'id, fecha, estado, iniciada_en, finalizada_en'

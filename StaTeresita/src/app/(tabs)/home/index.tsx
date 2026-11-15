@@ -1,6 +1,8 @@
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
-import { cambiarEstadoJornada, Jornada, listarParadas, obtenerOCrearJornadaHoy, textoEstadoJornada } from '@/lib/rutas'
+import MapaClientes from '@/components/MapaClientes'
+import { ubicacionesDeClientes } from '@/lib/mapa'
+import { cambiarEstadoJornada, ClienteRuta, Jornada, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -23,6 +25,8 @@ const HomeScreen = () => {
   const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [clientes, setClientes] = useState<ClienteFila[]>([])
   const [deudas, setDeudas] = useState<Record<string, number>>({})
+  // Clientes con su dirección y coordenadas, para el mapa del gerente
+  const [clientesMapa, setClientesMapa] = useState<ClienteRuta[]>([])
   const [jornada, setJornada] = useState<Jornada | null>(null)
   // Mi ruta de hoy (paradas asignadas a este usuario)
   const [miRuta, setMiRuta] = useState<{ estado: Jornada['estado'] | null; total: number; pendientes: number }>({ estado: null, total: 0, pendientes: 0 })
@@ -67,6 +71,8 @@ const HomeScreen = () => {
         })
         setClientes((cs as ClienteFila[]) || [])
         setDeudas(mapa)
+        const { data: cm } = await supabase.from('clientes').select(SELECT_CLIENTE)
+        setClientesMapa(((cm as any[]) || []) as ClienteRuta[])
       }
       cargar()
     }, [])
@@ -306,6 +312,24 @@ const HomeScreen = () => {
             )}
           </View>
 
+          {soyGerente && (() => {
+            const ubicaciones = ubicacionesDeClientes(clientesMapa, deudas)
+            const conUbicacion = ubicaciones.reduce((n, u) => n + u.clientes.length, 0)
+            return (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Mapa de clientes</Text>
+                <View style={styles.mapContainer}>
+                  <MapaClientes ubicaciones={ubicaciones} onPressCliente={(id) => router.push({ pathname: '/cliente/[id]', params: { id } } as any)} />
+                </View>
+                <Text style={styles.mapHint}>
+                  {conUbicacion
+                    ? `${conUbicacion} de ${clientesMapa.length} clientes con ubicación · verde al día, naranja con deuda`
+                    : 'Ningún cliente tiene ubicación todavía. Puedes calcularlas desde Zonas.'}
+                </Text>
+              </>
+            )
+          })()}
+
           <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Clientes</Text>
 
           {clientes.length === 0 && (
@@ -410,6 +434,8 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 12,
   },
+  mapContainer: { height: 280, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.card, marginBottom: 6 },
+  mapHint: { fontSize: 12, color: Palette.textMuted, marginBottom: 16 },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

@@ -6,7 +6,7 @@ import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp as abrirWhatsAppCon } from '@/lib/whatsapp'
-import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, validarDireccion } from '@/lib/zonas'
+import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
@@ -216,7 +216,12 @@ const HistorialCliente = () => {
       if (!data) { Alert.alert('Error', 'No tienes permiso para editar este cliente'); return }
       setCliente(data as Cliente)
       setModalEditar(false)
-      Alert.alert('Éxito', 'Datos del cliente actualizados')
+      // Ubicación en el mapa de la dirección (si aún no tiene). No impide guardar si falla.
+      let ubicado = true
+      try { ubicado = (await ubicarDireccion(direccionId)) !== 'no' } catch { ubicado = false }
+      Alert.alert('Éxito', ubicado
+        ? 'Datos del cliente actualizados'
+        : 'Datos actualizados. No se pudo ubicar la casa en el mapa; se puede intentar después desde Zonas.')
     } catch (e: any) {
       Alert.alert('Error al guardar', e.message)
     } finally {

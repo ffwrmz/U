@@ -8,7 +8,7 @@ import { Palette } from '@/constants/palette'
 import { normalizarTelefono } from '@/lib/format'
 import TelefonoInput from '@/components/TelefonoInput'
 import SelectorDireccion from '@/components/SelectorDireccion'
-import { Catalogo, catalogoVacio, cargarCatalogo, direccionVacia, guardarDireccion, textoDireccion, validarDireccion } from '@/lib/zonas'
+import { Catalogo, catalogoVacio, cargarCatalogo, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
 
 const RegistrarCliente = () => {
   const router = useRouter()
@@ -72,7 +72,13 @@ const RegistrarCliente = () => {
 
       if (error) throw error
 
-      Alert.alert('Éxito', 'Cliente registrado correctamente')
+      // 5. Ubicación en el mapa (si la dirección aún no tiene). Si falla, el cliente queda registrado igual.
+      let ubicado = true
+      try { ubicado = (await ubicarDireccion(direccionId)) !== 'no' } catch { ubicado = false }
+
+      Alert.alert('Éxito', ubicado
+        ? 'Cliente registrado correctamente'
+        : 'Cliente registrado. No se pudo ubicar su casa en el mapa; se puede intentar después desde Zonas.')
       
       // 4. Limpiamos el formulario y volvemos al menú
       setNombre('')
@@ -126,7 +132,7 @@ const RegistrarCliente = () => {
           disabled={loading}
         >
           <Text style={styles.submitButtonText}>
-            {loading ? 'Guardando...' : 'Guardar Cliente'}
+            {loading ? 'Guardando y ubicando en el mapa...' : 'Guardar Cliente'}
           </Text>
         </Pressable>
       </ScrollView>

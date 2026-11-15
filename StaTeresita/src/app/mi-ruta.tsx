@@ -1,9 +1,11 @@
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
+import MapaRuta from '@/components/MapaRuta'
 import { Palette } from '@/constants/palette'
 import { EstadoParada, Jornada, listarParadas, marcarParada, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
+import { abrirComoLlegar } from '@/lib/mapa'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
@@ -32,6 +34,7 @@ const MiRuta = () => {
   const [jornada, setJornada] = useState<Jornada | null>(null)
   const [paradas, setParadas] = useState<Parada[]>([])
   const [marcando, setMarcando] = useState<string | null>(null)
+  const [verMapa, setVerMapa] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
@@ -101,6 +104,12 @@ const MiRuta = () => {
                 <View style={styles.track}><View style={[styles.fill, { width: `${progreso * 100}%` }]} /></View>
                 <Text style={styles.resumenSub}>{visitadas} visitadas · {hechas - visitadas} no estaban · {paradas.length - hechas} pendientes</Text>
               </View>
+              {paradas.length > 0 && (
+                <Pressable style={styles.verMapa} onPress={() => setVerMapa(true)}>
+                  <Ionicons name="map-outline" size={18} color={Palette.navy} />
+                  <Text style={styles.verMapaText}>Ver mi ruta en el mapa</Text>
+                </Pressable>
+              )}
               {aviso && (
                 <View style={styles.avisoNavy}>
                   <Ionicons name="information-circle-outline" size={20} color={Palette.navy} />
@@ -146,6 +155,12 @@ const MiRuta = () => {
                       {e.texto}{p.visitado_en && p.estado !== 'pendiente' ? ` · ${hora(p.visitado_en)}` : ''}
                     </Text>
                   </View>
+                  {c && (
+                    <Pressable style={styles.llegar} onPress={() => abrirComoLlegar(c)} hitSlop={6} accessibilityLabel={`Cómo llegar donde ${c.nombre}`}>
+                      <Ionicons name="navigate-outline" size={15} color={Palette.navy} />
+                      <Text style={styles.llegarText}>Cómo llegar</Text>
+                    </Pressable>
+                  )}
                   <View style={{ flex: 1 }} />
                   {ocupado ? (
                     <ActivityIndicator size="small" color={Palette.navy} />
@@ -172,6 +187,13 @@ const MiRuta = () => {
           }}
         />
       )}
+      <MapaRuta
+        visible={verMapa}
+        titulo="Mi ruta de hoy"
+        paradas={paradas.map((p) => ({ cliente: p.cliente, estado: p.estado }))}
+        onClose={() => setVerMapa(false)}
+        onPressCliente={(id) => { setVerMapa(false); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
+      />
     </SafeAreaView>
   )
 }
@@ -200,6 +222,10 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 12, fontWeight: '800' },
   accion: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   accionText: { fontSize: 13, fontWeight: '800' },
+  verMapa: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, paddingVertical: 11 },
+  verMapaText: { fontSize: 14, fontWeight: '800', color: Palette.navy },
+  llegar: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, paddingVertical: 6 },
+  llegarText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   deshacer: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 6 },
   deshacerText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   vacio: { alignItems: 'center', gap: 10, marginTop: 30, paddingHorizontal: 20 },
