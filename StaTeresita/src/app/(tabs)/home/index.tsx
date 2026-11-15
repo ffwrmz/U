@@ -3,7 +3,7 @@ import { esGerente } from '@/lib/demoJornada'
 import { reiniciarDia } from '@/components/DepuracionDia'
 import MapaClientes from '@/components/MapaClientes'
 import { Punto, puntoDe, ubicacionesDeClientes } from '@/lib/mapa'
-import { cambiarEstadoJornada, ClienteRuta, Jornada, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
+import { cambiarEstadoJornada, ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -96,7 +96,8 @@ const HomeScreen = () => {
           const j = await obtenerOCrearJornadaHoy(false)
           if (!user || !j) { setMiRuta({ estado: j?.estado ?? null, total: 0, pendientes: 0 }); return }
           const ps = await listarParadas(j.id, user.id)
-          setMiRuta({ estado: j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+          const est = await listarEstadosCaseros(j.id)
+          setMiRuta({ estado: estadoRutaDe(j, est, user.id) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
         } catch {
           setMiRuta({ estado: null, total: 0, pendientes: 0 })
         }

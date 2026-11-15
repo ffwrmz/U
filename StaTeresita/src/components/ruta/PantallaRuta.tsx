@@ -6,7 +6,7 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
-import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
@@ -70,6 +70,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [refrescando, setRefrescando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [jornada, setJornada] = useState<Jornada | null>(null)
+  const [estados, setEstados] = useState<EstadosCaseros>({})
   const [todas, setTodas] = useState<Parada[]>([])
   const [yo, setYo] = useState<string | null>(null)
   const [soyGerente, setSoyGerente] = useState(false)
@@ -120,8 +121,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       setSoyGerente(gerente)
       const j = await obtenerOCrearJornadaHoy(false)
       // Cada modo corresponde a un estado de la jornada: si no calza, se va a la pantalla que corresponde
-      if (organizando && j?.estado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
-      if (!organizando && j?.estado === 'preparacion') { router.replace('/organizar-ruta' as any); return }
+      // Estado de la ruta de cada casero (cada uno puede comenzar la suya)
+      const est = j ? await listarEstadosCaseros(j.id) : {}
+      const miEstado = estadoRutaDe(j, est, user.id)
+      if (organizando && miEstado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
+      if (!organizando && miEstado === 'preparacion') { router.replace('/organizar-ruta' as any); return }
+      setEstados(est)
       setJornada(j)
       const ps = j ? await listarParadas(j.id, gerente ? undefined : user.id) : []
       setTodas(ps)
@@ -184,7 +189,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const paradasRef = useRef(paradas)
   paradasRef.current = paradas
   const numeroDe = (p: Parada) => paradas.findIndex((x) => x.id === p.id) + 1
-  const estado = jornada?.estado
+  // Estado de la ruta que se está viendo (la jornada, o el casero si la comenzó él)
+  const estado = estadoRutaDe(jornada, estados, verDe)
   const esMia = verDe === yo
   // Marca el casero en su propia ruta, o el gerente en cualquiera; solo con la jornada en curso
   const puedeMarcar = !organizando && estado === 'en_curso' && (esMia || soyGerente)
@@ -325,8 +331,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           await cambiarEstadoJornada(jornada.id, 'en_curso')
           router.replace('/ruta-en-curso' as any)
         } else {
-          // El casero solo deja guardado su orden (ya se guarda al moverlo) y vuelve al inicio
-          router.replace('/(tabs)/home' as any)
+          // El casero comienza su propia ruta (el orden ya se guardó al moverlo)
+          await iniciarMiRuta(jornada.id)
+          router.replace('/ruta-en-curso' as any)
         }
       } catch (e: any) {
         Alert.alert('Error', e.message ?? String(e))
@@ -449,7 +456,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         <>
           {/* Gerente: elegir de quién es la ruta que se ve */}
           {soyGerente && caseros.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.caseros}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.caserosFila} contentContainerStyle={styles.caseros}>
               {caseros.map((c) => {
                 const on = c.id === verDe
                 return (
@@ -462,7 +469,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           )}
 
           {/* Mapa arriba */}
-          <View style={[styles.mapa, { height: Math.round(height * 0.4) }]}>
+          {/* Mapa más bajo (máx. 220 px) y recortado para que no tape los botones de los caseros */}
+          <View style={[styles.mapa, { height: Math.min(220, Math.round(height * 0.28)) }]}>
             <MapaClientes
               ubicaciones={ubicaciones}
               trazarRuta
@@ -711,7 +719,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         <View style={styles.pie}>
           <Pressable style={[styles.terminar, terminando && { opacity: 0.6 }]} disabled={terminando} onPress={terminarOrganizacion}>
             {terminando ? <ActivityIndicator size="small" color={Palette.onNavy} /> : <Ionicons name="flag-outline" size={18} color={Palette.onNavy} />}
-            <Text style={styles.terminarText}>{soyGerente ? 'Terminar organización y comenzar ruta' : 'Terminar organización'}</Text>
+            <Text style={styles.terminarText}>Terminar organización y comenzar ruta</Text>
           </Pressable>
         </View>
       )}
@@ -725,7 +733,8 @@ const styles = StyleSheet.create({
   chip: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 7 },
   chipActivo: { backgroundColor: Palette.navy, borderColor: Palette.navy },
   chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
-  mapa: { backgroundColor: Palette.card, borderBottomWidth: 1, borderBottomColor: Palette.border },
+  mapa: { backgroundColor: Palette.card, borderBottomWidth: 1, borderBottomColor: Palette.border, overflow: 'hidden', zIndex: 0, position: 'relative' },
+  caserosFila: { flexGrow: 0, flexShrink: 0, zIndex: 2, backgroundColor: Palette.cream },
   mapaAviso: { position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 10, padding: 8 },
   mapaAvisoText: { fontSize: 12, color: Palette.textMuted, textAlign: 'center' },
   avance: { paddingHorizontal: 16, paddingTop: 10, gap: 6 },

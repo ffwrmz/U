@@ -149,6 +149,8 @@ export const reordenarParadas = async (ids: string[]) => {
 export const reiniciarJornada = async (jornadaId: string) => {
   const { error } = await supabase.from('jornadas').update({ estado: 'preparacion', iniciada_en: null, finalizada_en: null }).eq('id', jornadaId)
   if (error) throw error
+  // Rutas iniciadas por cada casero (si la tabla existe)
+  await supabase.from('jornada_vendedores').delete().eq('jornada_id', jornadaId)
 }
 // Quita todas las paradas de la jornada
 export const vaciarRuta = async (jornadaId: string) => {
@@ -163,3 +165,28 @@ export const esCaseroPrincipal = (nombre: string) => sinTildes(nombre).includes(
 export const ordenarCaseros = <T extends { nombre: string }>(lista: T[]) =>
   [...lista].sort((a, b) =>
     Number(esCaseroPrincipal(b.nombre)) - Number(esCaseroPrincipal(a.nombre)) || a.nombre.localeCompare(b.nombre, 'es'))
+
+// ---------- Estado de la ruta de cada casero (tabla jornada_vendedores) ----------
+// La jornada del día la puede iniciar el gerente para todos, o cada casero la suya.
+// Ver supabase/migrations/20261115161000_jornada_vendedores.sql
+export type EstadosCaseros = Record<string, EstadoJornada>
+
+export const listarEstadosCaseros = async (jornadaId: string): Promise<EstadosCaseros> => {
+  const { data, error } = await supabase.from('jornada_vendedores').select('vendedor_id, estado').eq('jornada_id', jornadaId)
+  if (error) return {} // si la tabla aún no existe, solo cuenta el estado de la jornada
+  return Object.fromEntries(((data as any[]) || []).map((r) => [r.vendedor_id, r.estado as EstadoJornada]))
+}
+
+// Estado efectivo de la ruta de un casero: la jornada manda si está en curso o finalizada;
+// si la jornada sigue en preparación, cuenta el estado propio del casero.
+export const estadoRutaDe = (jornada: Jornada | null, estados: EstadosCaseros, vendedorId: string | null | undefined): EstadoJornada | undefined => {
+  if (!jornada) return undefined
+  if (jornada.estado !== 'preparacion') return jornada.estado
+  return (vendedorId && estados[vendedorId]) || 'preparacion'
+}
+
+// El casero comienza su propia ruta (función iniciar_mi_ruta en Supabase)
+export const iniciarMiRuta = async (jornadaId: string) => {
+  const { error } = await supabase.rpc('iniciar_mi_ruta', { p_jornada: jornadaId })
+  if (error) throw error
+}

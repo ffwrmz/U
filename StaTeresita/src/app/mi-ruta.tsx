@@ -2,7 +2,7 @@ import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaRuta from '@/components/MapaRuta'
 import { Palette } from '@/constants/palette'
-import { EstadoParada, Jornada, listarParadas, marcarParada, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { EstadoParada, Jornada, listarParadas, marcarParada, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada, estadoRutaDe, listarEstadosCaseros } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { abrirComoLlegar } from '@/lib/mapa'
@@ -42,7 +42,9 @@ const MiRuta = () => {
       if (!user) throw new Error('No hay sesión activa')
       const j = await obtenerOCrearJornadaHoy(false)
       // Con la ruta iniciada se trabaja en la pantalla Ruta en curso (mapa + botones rápidos)
-      if (j?.estado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
+      // La ruta está en curso si la inició el gerente (jornada) o el propio casero (jornada_vendedores)
+      const miEstado = j ? estadoRutaDe(j, await listarEstadosCaseros(j.id), user.id) : undefined
+      if (miEstado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
       setJornada(j)
       setParadas(j ? await listarParadas(j.id, user.id) : [])
       setError(null)
