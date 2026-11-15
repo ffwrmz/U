@@ -5,7 +5,7 @@ import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
-import { abrirComoLlegar, distanciaMetros, hayUbicacionSimulada, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, simularUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
+import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
@@ -13,7 +13,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, Animated, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Alert, Animated, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const ESTADO = {
@@ -88,8 +88,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [camino, setCamino] = useState<RutaCalles | null>(null)
   const [sinServicio, setSinServicio] = useState(false)
   const [ordenAuto, setOrdenAuto] = useState<number[] | null>(null)
-  // Pruebas: simular mi ubicación tocando el mapa (gerente o modo desarrollo) y panel de depuración
-  const [simulando, setSimulando] = useState(hayUbicacionSimulada())
 
   const actualizarUbicacion = useCallback(async () => {
     setUbicacionEstado('buscando')
@@ -106,7 +104,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     actualizarUbicacion().then(async (p) => {
       if (!p || !activo) return
       // Mientras se simula la ubicación, el GPS no la reemplaza
-      const fn = await seguirMiUbicacion((q) => { if (!hayUbicacionSimulada()) setMiUbicacion(q) })
+      const fn = await seguirMiUbicacion((q) => setMiUbicacion(q))
       if (activo) dejar = fn; else fn()
     })
     return () => { activo = false; dejar?.() }
@@ -324,17 +322,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     comenzar() // sin confirmación: se inicia al tiro
   }
 
-  const puedeSimular = soyGerente && !organizando
-  const cambiarSimulacion = (activar: boolean) => {
-    setSimulando(activar)
-    if (!activar) { simularUbicacion(null); actualizarUbicacion() }
-  }
-  // Con la simulación activa, tocar el mapa me "pone" en ese punto
-  const fijarUbicacion = (p: Punto) => {
-    simularUbicacion(p)
-    setMiUbicacion(p)
-    setUbicacionEstado('ok')
-  }
 
   const marcar = async (p: Parada, nuevo: EstadoParada) => {
     setMarcando(p.id)
@@ -436,14 +423,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
               miUbicacion={miUbicacion}
-              onPressMapa={simulando && puedeSimular ? fijarUbicacion : undefined}
             />
-            {simulando && puedeSimular && (
-              <View style={styles.simulada}>
-                <Ionicons name="flask-outline" size={13} color={Palette.onNavy} />
-                <Text style={styles.simuladaText}>Ubicación simulada · toca el mapa para moverte</Text>
-              </View>
-            )}
             {paradas.length > 0 && ubicaciones.length === 0 && (
               <View style={styles.mapaAviso}><Text style={styles.mapaAvisoText}>Estas direcciones aún no tienen ubicación en el mapa.</Text></View>
             )}
@@ -489,53 +469,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                   </View>
                 )}
 
-                {/* Ruta sugerida desde mi ubicación (solo en Ruta en curso) */}
-                {!organizando && (
-                <View style={styles.cerca}>
-                  <View style={styles.cercaTop}>
-                    <Ionicons name="locate" size={16} color={Palette.navy} />
-                    <Text style={styles.cercaTitulo}>Siguiente parada sugerida</Text>
-                    <Pressable onPress={actualizarUbicacion} hitSlop={6} disabled={ubicacionEstado === 'buscando'}>
-                      {ubicacionEstado === 'buscando'
-                        ? <ActivityIndicator size="small" color={Palette.navy} />
-                        : <Text style={styles.link}>Actualizar mi ubicación</Text>}
-                    </Pressable>
-                  </View>
-                  {ubicacionEstado === 'sin_permiso' ? (
-                    <Text style={styles.cercaNota}>No se pudo obtener tu ubicación (falta el permiso o el GPS está apagado). La ruta funciona igual, sin sugerencias.</Text>
-                  ) : !miUbicacion ? (
-                    <Text style={styles.cercaNota}>Buscando tu ubicación…</Text>
-                  ) : sugeridas.length === 0 ? (
-                    <Text style={styles.cercaNota}>No quedan paradas pendientes con ubicación en el mapa.</Text>
-                  ) : (
-                    <>
-                      <Pressable style={styles.cercaFila} onPress={() => seleccionar(sugeridas[0], true)}>
-                        <View style={styles.cercaNumero}><Ionicons name="arrow-forward" size={14} color={Palette.onNavy} /></View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.cercaNombre} numberOfLines={1}>{sugeridas[0].cliente?.nombre ?? 'Cliente'}</Text>
-                          <Text style={styles.cercaDir} numberOfLines={1}>{sugeridas[0].cliente ? lineaDireccion(sugeridas[0].cliente) : ''}</Text>
-                        </View>
-                        <Text style={styles.cercaDist}>{textoDistancia(sugerida!.tramos[0])}</Text>
-                      </Pressable>
-                      <Text style={styles.cercaNota}>
-                        Ruta sugerida: {sugeridas.length} paradas, unos {textoDistancia(sugerida!.total)} en total
-                        {pendientesSinPunto.length ? ` (+${pendientesSinPunto.length} sin ubicación)` : ''}. Distancias aproximadas en línea recta.
-                      </Text>
-                    </>
-                  )}
-                </View>
-                )}
-
-                {/* Pruebas: simular mi ubicación tocando el mapa (solo en Ruta en curso) */}
-                {puedeSimular && (
-                  <View style={styles.pruebas}>
-                    <Text style={styles.pruebasText}>Simular mi ubicación</Text>
-                    <Switch value={simulando} onValueChange={cambiarSimulacion}
-                      trackColor={{ false: Palette.grayPill, true: Palette.orange }} thumbColor={Palette.card} />
-                  </View>
-                )}
-
-                {/* Orden de la lista: el guardado o el sugerido desde mi ubicación */}
+                {/* Orden de la lista (solo al organizar; en curso se sigue el orden guardado) */}
+                {organizando && (
                 <View style={styles.ordenFila}>
                   {([['ruta', 'Orden de la ruta'], ['sugerida', 'Ruta sugerida desde mi ubicación']] as const).map(([k, t]) => {
                     const sinUbicacion = k === 'sugerida' && !sugerida
@@ -550,6 +485,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                   })}
                   {guardandoOrden && <ActivityIndicator size="small" color={Palette.navy} />}
                 </View>
+                )}
               </View>
             }
             ListEmptyComponent={!error && jornada ? <Text style={styles.vacio}>No hay clientes en esta ruta hoy.</Text> : undefined}
@@ -756,10 +692,6 @@ const styles = StyleSheet.create({
   cercaDir: { fontSize: 12, color: Palette.textMuted },
   cercaDist: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   cercaNota: { fontSize: 12, color: Palette.textMuted },
-  simulada: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
-  simuladaText: { fontSize: 12, fontWeight: '800', color: Palette.onNavy },
-  pruebas: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: Palette.orange, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
-  pruebasText: { flex: 1, fontSize: 13, fontWeight: '800', color: Palette.orange },
   ordenFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   usarOrden: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 12, paddingVertical: 11 },
   usarOrdenText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },

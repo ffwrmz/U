@@ -86,14 +86,8 @@ export const textoDistancia = (m: number) =>
 export const puntoDe = (c: ClienteRuta | null | undefined): Punto | null =>
   tieneCoordenadas(c) ? { latitud: Number(c.dir.latitud), longitud: Number(c.dir.longitud) } : null
 
-// Ubicación simulada (solo para pruebas, desde "Depuración del día"): si está puesta, se usa en vez del GPS.
-let ubicacionSimulada: Punto | null = null
-export const simularUbicacion = (p: Punto | null) => { ubicacionSimulada = p }
-export const hayUbicacionSimulada = () => ubicacionSimulada != null
-
 // Ubicación actual del teléfono. Pide permiso la primera vez; devuelve null si no se da o falla.
 export const obtenerMiUbicacion = async (): Promise<Punto | null> => {
-  if (ubicacionSimulada) return ubicacionSimulada
   try {
     let { status } = await Location.getForegroundPermissionsAsync()
     if (status !== 'granted') ({ status } = await Location.requestForegroundPermissionsAsync())
@@ -108,7 +102,6 @@ export const obtenerMiUbicacion = async (): Promise<Punto | null> => {
 // Sigue la ubicación mientras la pantalla está abierta (cada ~30 s o al moverse 50 m).
 // Devuelve una función para dejar de seguirla. Asume que el permiso ya se dio.
 export const seguirMiUbicacion = async (cb: (p: Punto) => void): Promise<() => void> => {
-  if (ubicacionSimulada) return () => {} // con ubicación simulada no se sigue el GPS
   try {
     const sub = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
