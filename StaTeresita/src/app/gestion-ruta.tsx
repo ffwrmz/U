@@ -5,7 +5,6 @@ import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
   comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
-import { reiniciarDia } from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
@@ -341,21 +340,6 @@ const GestionRuta = () => {
             )
           })}
 
-          {/* Depuración del día: solo gerente, para probar las rutas */}
-          {soyGerente && (
-            <View style={styles.depuracion}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.depuracionTitulo}>Depuración del día</Text>
-                <Text style={styles.sub}>Solo para pruebas: deja el día como si nunca se hubieran asignado clientes ni iniciado la ruta.</Text>
-              </View>
-              <Pressable style={styles.depuracionBtn} onPress={() => reiniciarDia(jornada?.id, async () => {
-                try { const j = await obtenerOCrearJornadaHoy(soyGerente); setJornada(j); await recargarParadas(j) } catch {}
-              })}>
-                <Ionicons name="bug-outline" size={16} color={Palette.orange} />
-                <Text style={styles.depuracionBtnText}>Reiniciar</Text>
-              </Pressable>
-            </View>
-          )}
         </ScrollView>
       )}
 
@@ -505,10 +489,6 @@ const styles = StyleSheet.create({
   pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   pillText: { fontSize: 11, fontWeight: '700' },
   acciones: { alignItems: 'center', gap: 2 },
-  depuracion: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: Palette.orange, borderStyle: 'dashed', borderRadius: 14, padding: 12, marginTop: 10 },
-  depuracionTitulo: { fontSize: 14, fontWeight: '800', color: Palette.orange },
-  depuracionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.amberSoft, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  depuracionBtnText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: Palette.text, flex: 1, marginRight: 8 },

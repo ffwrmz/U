@@ -1,4 +1,3 @@
-import { reiniciarDia } from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -265,7 +264,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     }
   }
 
-  const puedeSimular = soyGerente || __DEV__
+  const puedeSimular = soyGerente
   const cambiarSimulacion = (activar: boolean) => {
     setSimulando(activar)
     if (!activar) { simularUbicacion(null); actualizarUbicacion() }
@@ -450,18 +449,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                   )}
                 </View>
 
-                {/* Pruebas: simular ubicación y depuración del día */}
+                {/* Pruebas: simular mi ubicación tocando el mapa */}
                 {puedeSimular && (
                   <View style={styles.pruebas}>
                     <Text style={styles.pruebasText}>Simular mi ubicación</Text>
                     <Switch value={simulando} onValueChange={cambiarSimulacion}
                       trackColor={{ false: Palette.grayPill, true: Palette.orange }} thumbColor={Palette.card} />
-                    {soyGerente && (
-                      <Pressable style={styles.pruebasBtn} onPress={() => reiniciarDia(jornada?.id, () => router.replace('/(tabs)/home' as any))} hitSlop={4}>
-                        <Ionicons name="bug-outline" size={15} color={Palette.orange} />
-                        <Text style={styles.pruebasBtnText}>Depuración</Text>
-                      </Pressable>
-                    )}
                   </View>
                 )}
 
@@ -653,8 +646,6 @@ const styles = StyleSheet.create({
   simuladaText: { fontSize: 12, fontWeight: '800', color: Palette.onNavy },
   pruebas: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: Palette.orange, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
   pruebasText: { flex: 1, fontSize: 13, fontWeight: '800', color: Palette.orange },
-  pruebasBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.amberSoft, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
-  pruebasBtnText: { fontSize: 12, fontWeight: '800', color: Palette.orange },
   ordenFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   usarOrden: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 12, paddingVertical: 11 },
   usarOrdenText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },
