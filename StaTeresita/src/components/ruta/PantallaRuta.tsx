@@ -752,7 +752,7 @@ const styles = StyleSheet.create({
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 20, fontSize: 14 },
   card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 10 },
   cardCompacta: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, gap: 6 },
-  numeroColCompacta: { gap: 4 },
+  numeroColCompacta: { gap: 4, alignSelf: 'center' },
   numeroCompacto: { width: 26, height: 26, borderRadius: 13 },
   manillaCompacta: { width: 28, height: 28, borderRadius: 8 },
   iconosCompactos: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
