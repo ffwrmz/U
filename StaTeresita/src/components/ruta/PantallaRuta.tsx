@@ -586,12 +586,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                   !organizando && p.estado === 'no_estaba' && styles.cardNoEstaba,
                   sel && styles.cardSel, arrastre.arrastrandoId === p.id && styles.cardArrastrada]} onPress={() => seleccionar(p, false)}>
                   <View style={styles.cardTop}>
-                    {/* Número y manilla: solo al organizar */}
+                    {/* Manilla para mover: solo al organizar (sin número de orden) */}
                     {organizando && (
                     <View style={[styles.numeroCol, styles.numeroColCompacta]}>
-                      <View style={[styles.numero, organizando && styles.numeroCompacto, { backgroundColor: COLORES_MAPA[p.estado] ?? Palette.navy }]}>
-                        <Text style={styles.numeroText}>{index + 1}</Text>
-                      </View>
                       {/* Manilla para agarrar y mover al cliente */}
                       {puedeArrastrar && p.estado === 'pendiente' && (
                         <View {...arrastre.handlers(p.id)} hitSlop={10} style={[styles.manilla, organizando && styles.manillaCompacta]} accessibilityLabel="Mantén y arrastra para mover">
