@@ -1,6 +1,6 @@
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
-import DepuracionDia from '@/components/DepuracionDia'
+import { reiniciarDia } from '@/components/DepuracionDia'
 import MapaClientes from '@/components/MapaClientes'
 import { Punto, puntoDe, ubicacionesDeClientes } from '@/lib/mapa'
 import { cambiarEstadoJornada, ClienteRuta, Jornada, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
@@ -28,7 +28,6 @@ const HomeScreen = () => {
   const [deudas, setDeudas] = useState<Record<string, number>>({})
   // Clientes con su dirección y coordenadas, para el mapa del gerente
   const [clientesMapa, setClientesMapa] = useState<ClienteRuta[]>([])
-  const [depuracion, setDepuracion] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
   // Mi ruta de hoy (paradas asignadas a este usuario)
   const [miRuta, setMiRuta] = useState<{ estado: Jornada['estado'] | null; total: number; pendientes: number }>({ estado: null, total: 0, pendientes: 0 })
@@ -291,7 +290,7 @@ const HomeScreen = () => {
             {rolUsuario === 'dueno' && (
               <Pressable
                 style={({ pressed }) => [styles.quick, { borderColor: Palette.orange, borderStyle: 'dashed', borderWidth: 1.5 }, pressed && styles.cardPressed]}
-                onPress={() => setDepuracion(true)}
+                onPress={() => reiniciarDia(jornada?.id, () => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) })}
               >
                 <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
                   <Ionicons name="bug-outline" size={24} color={Palette.orange} />
@@ -395,13 +394,6 @@ const HomeScreen = () => {
           })}
         </View>
       </ScrollView>
-      <DepuracionDia
-        visible={depuracion}
-        jornada={jornada}
-        casas={clientesMapa.filter((c) => puntoDe(c)).map((c) => ({ nombre: c.nombre, punto: puntoDe(c) as Punto }))}
-        onClose={() => setDepuracion(false)}
-        onCambio={() => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) }}
-      />
     </View>
   )
 }

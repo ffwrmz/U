@@ -1,4 +1,4 @@
-import DepuracionDia from '@/components/DepuracionDia'
+import { reiniciarDia } from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -86,7 +86,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [guardandoOrden, setGuardandoOrden] = useState(false)
   // Pruebas: simular mi ubicación tocando el mapa (gerente o modo desarrollo) y panel de depuración
   const [simulando, setSimulando] = useState(hayUbicacionSimulada())
-  const [depuracion, setDepuracion] = useState(false)
 
   const actualizarUbicacion = useCallback(async () => {
     setUbicacionEstado('buscando')
@@ -458,7 +457,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     <Switch value={simulando} onValueChange={cambiarSimulacion}
                       trackColor={{ false: Palette.grayPill, true: Palette.orange }} thumbColor={Palette.card} />
                     {soyGerente && (
-                      <Pressable style={styles.pruebasBtn} onPress={() => setDepuracion(true)} hitSlop={4}>
+                      <Pressable style={styles.pruebasBtn} onPress={() => reiniciarDia(jornada?.id, () => router.replace('/(tabs)/home' as any))} hitSlop={4}>
                         <Ionicons name="bug-outline" size={15} color={Palette.orange} />
                         <Text style={styles.pruebasBtnText}>Depuración</Text>
                       </Pressable>
@@ -603,13 +602,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           </Pressable>
         </View>
       )}
-      <DepuracionDia
-        visible={depuracion}
-        jornada={jornada}
-        casas={enOrden.filter((p) => puntoDe(p.cliente)).map((p) => ({ nombre: p.cliente?.nombre ?? 'Cliente', punto: puntoDe(p.cliente) as Punto }))}
-        onClose={() => { setDepuracion(false); setSimulando(hayUbicacionSimulada()); if (hayUbicacionSimulada()) actualizarUbicacion() }}
-        onCambio={() => { setCuotas({}); cargar() }}
-      />
     </SafeAreaView>
   )
 }

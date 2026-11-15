@@ -5,7 +5,7 @@ import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
   comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
-import DepuracionDia from '@/components/DepuracionDia'
+import { reiniciarDia } from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
@@ -43,7 +43,6 @@ const VISITA = {
 const GestionRuta = () => {
   const router = useRouter()
   const [mapaDe, setMapaDe] = useState<{ casero_id: string; nombre: string } | null>(null)
-  const [depuracion, setDepuracion] = useState(false)
   const [soyGerente, setSoyGerente] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
   const [paradas, setParadas] = useState<Parada[]>([])
@@ -347,29 +346,19 @@ const GestionRuta = () => {
             <View style={styles.depuracion}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.depuracionTitulo}>Depuración del día</Text>
-                <Text style={styles.sub}>Solo para pruebas: reiniciar la ruta de hoy, cambiar su estado o simular ubicación.</Text>
+                <Text style={styles.sub}>Solo para pruebas: deja el día como si nunca se hubieran asignado clientes ni iniciado la ruta.</Text>
               </View>
-              <Pressable style={styles.depuracionBtn} onPress={() => setDepuracion(true)}>
+              <Pressable style={styles.depuracionBtn} onPress={() => reiniciarDia(jornada?.id, async () => {
+                try { const j = await obtenerOCrearJornadaHoy(soyGerente); setJornada(j); await recargarParadas(j) } catch {}
+              })}>
                 <Ionicons name="bug-outline" size={16} color={Palette.orange} />
-                <Text style={styles.depuracionBtnText}>Abrir</Text>
+                <Text style={styles.depuracionBtnText}>Reiniciar</Text>
               </Pressable>
             </View>
           )}
         </ScrollView>
       )}
 
-      <DepuracionDia
-        visible={depuracion}
-        jornada={jornada}
-        onClose={() => setDepuracion(false)}
-        onCambio={async () => {
-          try {
-            const j = await obtenerOCrearJornadaHoy(soyGerente)
-            setJornada(j)
-            await recargarParadas(j)
-          } catch {}
-        }}
-      />
 
       {/* Modal: asignar clientes */}
       <Modal visible={!!caseroModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCaseroModal(null)}>
