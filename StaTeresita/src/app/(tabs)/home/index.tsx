@@ -65,6 +65,7 @@ const HomeScreen = () => {
           .from('ventas_pedidos')
           .select('cliente_id, saldo_pendiente')
           .gt('saldo_pendiente', 0)
+          .neq('estado_pago', 'anulada') // las ventas anuladas no cuentan como deuda
 
         const mapa: Record<string, number> = {}
         ;(vs || []).forEach((v: any) => {
@@ -339,17 +340,26 @@ const HomeScreen = () => {
           {soyGerente && (() => {
             const ubicaciones = ubicacionesDeClientes(clientesMapa, deudas)
             const conUbicacion = ubicaciones.reduce((n, u) => n + u.clientes.length, 0)
+            const conDeudaMapa = ubicaciones.reduce((n, u) => n + u.clientes.filter((c) => c.deuda > 0).length, 0)
+            const sinUbicacion = clientesMapa.length - conUbicacion
             return (
               <>
                 <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Mapa de clientes</Text>
                 <View style={styles.mapContainer}>
-                  <MapaClientes ubicaciones={ubicaciones} onPressCliente={(id) => router.push({ pathname: '/cliente/[id]', params: { id } } as any)} />
+                  <MapaClientes ubicaciones={ubicaciones} estilo="punto" onPressCliente={(id) => router.push({ pathname: '/cliente/[id]', params: { id } } as any)} />
                 </View>
-                <Text style={styles.mapHint}>
-                  {conUbicacion
-                    ? `${conUbicacion} de ${clientesMapa.length} clientes con ubicación · verde al día, naranja con deuda`
-                    : 'Ningún cliente tiene ubicación todavía. Puedes calcularlas desde Zonas.'}
-                </Text>
+                {/* Leyenda: verde al día, amarillo con deuda */}
+                <View style={styles.leyendaMapa}>
+                  <View style={styles.leyendaItem}>
+                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.green, borderColor: '#FFFFFF' }]} />
+                    <Text style={styles.leyendaText}>{conUbicacion - conDeudaMapa} al día</Text>
+                  </View>
+                  <View style={styles.leyendaItem}>
+                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.yellow, borderColor: Palette.yellowBorder }]} />
+                    <Text style={styles.leyendaText}>{conDeudaMapa} con deuda</Text>
+                  </View>
+                  {sinUbicacion > 0 && <Text style={styles.leyendaText}>· {sinUbicacion} sin ubicación</Text>}
+                </View>
               </>
             )
           })()}
@@ -459,6 +469,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mapContainer: { height: 280, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.card, marginBottom: 6 },
+  leyendaMapa: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 },
+  leyendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  leyendaPunto: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
+  leyendaText: { fontSize: 12, color: Palette.textMuted },
   mapHint: { fontSize: 12, color: Palette.textMuted, marginBottom: 16 },
   sectionTitle: {
     fontSize: 13,

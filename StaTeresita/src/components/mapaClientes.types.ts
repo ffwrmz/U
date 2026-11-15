@@ -25,6 +25,8 @@ export type MapaClientesProps = {
   seleccionId?: string | null;
   /** Al tocar un punto (además de la burbuja con los datos). */
   onPressUbicacion?: (u: UbicacionMapa) => void;
+  /** 'punto': marcadores como puntitos de color (mapa de clientes); por defecto alfiler o número. */
+  estilo?: "pin" | "punto";
   /** Al tocar un lugar vacío del mapa (por ejemplo, para simular la ubicación). */
   onPressMapa?: (p: { latitud: number; longitud: number }) => void;
   /** Ubicación actual del usuario ("Tú estás aquí"). */

@@ -24,6 +24,8 @@ export const Palette = {
   greenSoft: '#DDF3E6',
   amber: '#9A6200',
   amberSoft: '#FDF0D2',
+  yellow: '#F5C518', // puntos de clientes con deuda en el mapa (con borde oscuro)
+  yellowBorder: '#7A5A00',
   grayPill: '#ECEBE5',
 
   // Sobre fondo azul marino

@@ -24,6 +24,7 @@ export default function MapaClientes({
   onPressUbicacion,
   miUbicacion,
   onPressMapa,
+  estilo,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
 
@@ -116,7 +117,9 @@ export default function MapaClientes({
             coordinate={{ latitude: u.latitud, longitude: u.longitud }}
             onPress={onPressUbicacion ? () => onPressUbicacion(u) : undefined}
             zIndex={u.id === seleccionId ? 10 : 1}
-            pinColor={u.etiqueta ? undefined : colorDe(u, Palette.green, Palette.amber)}
+            pinColor={u.etiqueta || estilo === "punto" ? undefined : colorDe(u, Palette.green, Palette.amber)}
+            anchor={estilo === "punto" ? { x: 0.5, y: 0.5 } : undefined}
+            tracksViewChanges={estilo !== "punto"}
             title={titulo(u)}
             description={
               u.clientes.length === 1
@@ -130,7 +133,9 @@ export default function MapaClientes({
                 : undefined
             }
           >
-            {u.etiqueta ? (
+            {estilo === "punto" && !u.etiqueta ? (
+              <View style={[styles.punto, { backgroundColor: colorDe(u, Palette.green, Palette.yellow), borderColor: deuda > 0 ? Palette.yellowBorder : "#FFFFFF" }]} />
+            ) : u.etiqueta ? (
               <View style={[styles.numero, { backgroundColor: colorDe(u, Palette.green, Palette.amber) }, u.id === seleccionId && styles.numeroSel]}>
                 <Text style={styles.numeroText}>{u.etiqueta}</Text>
               </View>
@@ -146,6 +151,7 @@ const styles = StyleSheet.create({
   map: { width: "100%", height: "100%" },
   numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF" },
   numeroText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  punto: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
   yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF" },
   numeroSel: { minWidth: 38, height: 38, borderRadius: 19, borderWidth: 3, borderColor: Palette.orange },
 });

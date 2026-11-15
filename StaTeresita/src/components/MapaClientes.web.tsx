@@ -55,6 +55,7 @@ export default function MapaClientes({
   onPressUbicacion,
   miUbicacion,
   onPressMapa,
+  estilo,
 }: MapaClientesProps) {
   const mapRef = useRef<MapRef>(null);
   const [listo, setListo] = useState(false);
@@ -136,15 +137,23 @@ export default function MapaClientes({
           key={u.id}
           longitude={u.longitud}
           latitude={u.latitud}
-          anchor={u.etiqueta ? "center" : "bottom"}
-          color={u.etiqueta ? undefined : colorDe(u, Palette.green, Palette.amber)}
+          anchor={u.etiqueta || estilo === "punto" ? "center" : "bottom"}
+          color={u.etiqueta || estilo === "punto" ? undefined : colorDe(u, Palette.green, Palette.amber)}
           onClick={(e) => {
             e.originalEvent.stopPropagation();
             if (onPressUbicacion) onPressUbicacion(u);
             else setSeleccion(u);
           }}
         >
-          {u.etiqueta ? (
+          {estilo === "punto" && !u.etiqueta ? (
+            <div
+              style={{
+                width: 16, height: 16, borderRadius: 8, boxSizing: "border-box", cursor: "pointer",
+                background: colorDe(u, Palette.green, Palette.yellow),
+                border: `2px solid ${u.clientes.some((c) => c.deuda > 0) ? Palette.yellowBorder : "#fff"}`,
+              }}
+            />
+          ) : u.etiqueta ? (
             <div
               style={{
                 minWidth: u.id === seleccionId ? 38 : 28, height: u.id === seleccionId ? 38 : 28,
@@ -177,7 +186,7 @@ export default function MapaClientes({
         <Popup
           longitude={seleccion.longitud}
           latitude={seleccion.latitud}
-          offset={seleccion.etiqueta ? 16 : 36}
+          offset={seleccion.etiqueta || estilo === "punto" ? 12 : 36}
           maxWidth="260px"
           onClose={() => setSeleccion(null)}
           closeOnClick={false}
