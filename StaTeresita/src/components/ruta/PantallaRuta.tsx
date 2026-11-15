@@ -462,6 +462,17 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             ListHeaderComponent={
               <View style={{ gap: 8 }}>
                 {error && <Text style={styles.error}>No se pudo cargar la ruta: {error}</Text>}
+                {/* Leyenda de colores de las tarjetas (Ruta en curso) */}
+                {!organizando && paradas.length > 0 && (
+                  <View style={styles.leyenda}>
+                    {([['Pendiente', Palette.navy], ['Estaba', Palette.green], ['No estaba', Palette.orange]] as const).map(([t, color]) => (
+                      <View key={t} style={styles.leyendaItem}>
+                        <View style={[styles.leyendaPunto, { backgroundColor: color }]} />
+                        <Text style={styles.leyendaText}>{t}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
                 {aviso && !organizando && (
                   <View style={styles.avisoNavy}>
                     <Ionicons name="information-circle-outline" size={18} color={Palette.navy} />
@@ -500,9 +511,16 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               const ocupado = marcando === p.id
               return (
                 <Animated.View onLayout={(e) => arrastre.setAltura(p.id, e.nativeEvent.layout.height)} style={arrastre.estiloDe(p.id)}>
-                <Pressable style={[styles.card, organizando && styles.cardCompacta, sel && styles.cardSel, arrastre.arrastrandoId === p.id && styles.cardArrastrada]} onPress={() => seleccionar(p, false)}>
+                <Pressable style={[styles.card, organizando && styles.cardCompacta,
+                  // En Ruta en curso el estado se ve en el color de la tarjeta: verde = estaba, naranja = no estaba
+                  !organizando && styles.cardPendiente,
+                  !organizando && p.estado === 'visitado' && styles.cardVisitada,
+                  !organizando && p.estado === 'no_estaba' && styles.cardNoEstaba,
+                  sel && styles.cardSel, arrastre.arrastrandoId === p.id && styles.cardArrastrada]} onPress={() => seleccionar(p, false)}>
                   <View style={styles.cardTop}>
-                    <View style={[styles.numeroCol, organizando && styles.numeroColCompacta]}>
+                    {/* Número y manilla: solo al organizar */}
+                    {organizando && (
+                    <View style={[styles.numeroCol, styles.numeroColCompacta]}>
                       <View style={[styles.numero, organizando && styles.numeroCompacto, { backgroundColor: COLORES_MAPA[p.estado] ?? Palette.navy }]}>
                         <Text style={styles.numeroText}>{index + 1}</Text>
                       </View>
@@ -513,6 +531,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                         </View>
                       )}
                     </View>
+                    )}
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={styles.nombreFila}>
                         <Text style={[styles.nombre, { flex: 1 }]} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
@@ -523,14 +542,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                         ) : null}
                       </View>
                       {c && <DireccionCliente c={c} compacta />}
-                      {/* Estado de la visita: solo en Ruta en curso */}
-                      {!organizando && (
-                        <View style={[styles.pill, { backgroundColor: e.fondo }]}>
-                          <Text style={[styles.pillText, { color: e.color }]}>
-                            {e.texto}{p.visitado_en && p.estado !== 'pendiente' ? ` · ${hora(p.visitado_en)}` : ''}
-                          </Text>
-                        </View>
-                      )}
                     </View>
                     {puedeMover && (
                       <View style={styles.flechas}>
@@ -674,6 +685,14 @@ const styles = StyleSheet.create({
   cardArrastrada: { backgroundColor: Palette.inputFill, borderColor: Palette.navy, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   numeroCol: { alignItems: 'center', gap: 6 },
   manilla: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.navySoft },
+  // Ruta en curso: franja izquierda y fondo según el estado (los mismos colores de los números del mapa)
+  cardPendiente: { borderColor: Palette.navySoft, borderLeftWidth: 5, borderLeftColor: Palette.navy },
+  cardVisitada: { backgroundColor: Palette.greenSoft, borderColor: Palette.green, borderLeftColor: Palette.green },
+  cardNoEstaba: { backgroundColor: Palette.amberSoft, borderColor: Palette.orange, borderLeftColor: Palette.orange },
+  leyenda: { flexDirection: 'row', gap: 14, paddingHorizontal: 2 },
+  leyendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  leyendaPunto: { width: 10, height: 10, borderRadius: 5 },
+  leyendaText: { fontSize: 12, fontWeight: '600', color: Palette.textMuted },
   cardSel: { borderColor: Palette.orange, borderWidth: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   numero: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
