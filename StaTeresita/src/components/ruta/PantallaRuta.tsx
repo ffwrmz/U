@@ -581,7 +581,13 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                       </View>
                     )}
                     <View style={styles.iconos}>
-                      {c?.telefono ? (
+                      {organizando && c && (
+                        <Pressable style={[styles.icono, { backgroundColor: Palette.navySoft }]} hitSlop={6} accessibilityLabel="Ver ficha del cliente"
+                          onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: c.id } } as any)}>
+                          <Ionicons name="person-outline" size={17} color={Palette.navy} />
+                        </Pressable>
+                      )}
+                      {!organizando && c?.telefono ? (
                         <Pressable style={[styles.icono, { backgroundColor: Palette.green }]} onPress={() => abrirWhatsApp(c.telefono)} hitSlop={6} accessibilityLabel="Escribir por WhatsApp">
                           <Ionicons name="logo-whatsapp" size={18} color={Palette.onNavy} />
                         </Pressable>
@@ -594,7 +600,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     </View>
                   </View>
 
-                  {/* Botones rápidos */}
+                  {/* Botones rápidos (no se muestran al organizar la ruta) */}
+                  {!organizando && (
                   <View style={styles.botones}>
                     {ocupado ? (
                       <ActivityIndicator size="small" color={Palette.navy} style={{ flex: 2 }} />
@@ -620,8 +627,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                       <Text style={[styles.botonText, { color: abierta === p.id ? Palette.onNavy : Palette.navy }]}>Cuotas</Text>
                     </Pressable>
                   </View>
+                  )}
 
-                  {abierta === p.id && (
+                  {!organizando && abierta === p.id && (
                     <>
                       <PanelCuotas p={p} />
                       <View style={styles.botones}>
