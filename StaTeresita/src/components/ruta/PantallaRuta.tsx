@@ -312,9 +312,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           await cambiarEstadoJornada(jornada.id, 'en_curso')
           router.replace('/ruta-en-curso' as any)
         } else {
-          Alert.alert('Ruta organizada', 'Tu orden quedó guardado. Cuando el gerente inicie la ruta podrás marcar visitas, cobrar y vender.')
-          setOrdenVista('ruta')
-          cargar()
+          // El casero solo deja guardado su orden (ya se guarda al moverlo) y vuelve al inicio
+          router.replace('/(tabs)/home' as any)
         }
       } catch (e: any) {
         Alert.alert('Error', e.message ?? String(e))
