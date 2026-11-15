@@ -1,8 +1,23 @@
 // Arrastrar y soltar filas de una lista para cambiar su orden (Organizar ruta).
 // Usa solo PanResponder/Animated de React Native, así funciona en el teléfono y en la web sin librerías extra.
 // Uso: cada fila llama a setAltura(id, alto) en onLayout, la manilla recibe handlers(id) y la fila usa estiloDe(id).
-import { useRef, useState } from 'react'
-import { Animated, GestureResponderHandlers, PanResponder, PanResponderInstance } from 'react-native'
+import { createContext, createElement, ReactNode, useContext, useRef, useState } from 'react'
+import { Animated, GestureResponderHandlers, PanResponder, PanResponderInstance, Platform, Vibration, View } from 'react-native'
+
+// Celda de FlatList que dibuja encima la fila que se está arrastrando. Tiene que ser un componente fijo
+// (definido aquí, fuera del render): si se creara en cada render, la lista volvería a montar las filas
+// al empezar a arrastrar y el gesto se cortaría.
+const ArrastreContexto = createContext<string | null>(null)
+export const ProveedorArrastre = ({ id, children }: { id: string | null; children: ReactNode }) =>
+  createElement(ArrastreContexto.Provider, { value: id }, children)
+export const CeldaArrastrable = ({ item, style, ...props }: any) => {
+  const arrastrando = useContext(ArrastreContexto)
+  const encima = item?.id != null && item.id === arrastrando
+  return createElement(View, { ...props, style: [style, { zIndex: encima ? 999 : 0, elevation: encima ? 8 : 0 }] })
+}
+
+// Tiempo que hay que mantener presionada la manilla para empezar a mover (ms)
+const ESPERA = 250
 
 export const useArrastre = (
   ids: string[],
@@ -16,6 +31,7 @@ export const useArrastre = (
   const alturas = useRef<Record<string, number>>({})
   const dy = useRef(new Animated.Value(0)).current
   const actual = useRef<{ id: string; desde: number; hacia: number } | null>(null)
+  const pendiente = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null)
   const [estado, setEstado] = useState<{ id: string; desde: number; hacia: number } | null>(null)
   const responders = useRef<Record<string, PanResponderInstance>>({})
 
@@ -41,7 +57,17 @@ export const useArrastre = (
     return hacia
   }
 
+  // Empieza a mover la fila (después de mantener presionado)
+  const activar = (id: string) => {
+    const desde = idsRef.current.indexOf(id)
+    if (desde < 0) return
+    actual.current = { id, desde, hacia: desde }
+    setEstado({ id, desde, hacia: desde })
+    if (Platform.OS !== 'web') Vibration.vibrate(15) // aviso corto: ya se puede mover
+  }
+
   const terminar = () => {
+    if (pendiente.current) { clearTimeout(pendiente.current.timer); pendiente.current = null }
     const a = actual.current
     actual.current = null
     setEstado(null)
@@ -58,13 +84,17 @@ export const useArrastre = (
         onPanResponderTerminationRequest: () => false, // que la lista no "robe" el gesto para hacer scroll
         onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: () => {
-          const desde = idsRef.current.indexOf(id)
-          if (desde < 0) return
-          actual.current = { id, desde, hacia: desde }
           dy.setValue(0)
-          setEstado({ id, desde, hacia: desde })
+          // Mantener presionado ESPERA ms activa el movimiento
+          pendiente.current = { id, timer: setTimeout(() => { pendiente.current = null; activar(id) }, ESPERA) }
         },
         onPanResponderMove: (_e, g) => {
+          // Si mueve el dedo antes de la espera, igual se activa (ya tiene agarrada la manilla)
+          if (!actual.current && pendiente.current && Math.abs(g.dy) > 8) {
+            clearTimeout(pendiente.current.timer)
+            pendiente.current = null
+            activar(id)
+          }
           const a = actual.current
           if (!a) return
           dy.setValue(g.dy)

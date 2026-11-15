@@ -10,7 +10,7 @@ import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, ordenarCaseros, 
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
-import { useArrastre } from '@/components/ruta/useArrastre'
+import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native'
@@ -479,14 +479,13 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             <View style={styles.track}><View style={[styles.fill, { width: `${paradas.length ? (hechas / paradas.length) * 100 : 0}%` }]} /></View>
           </View>
 
+          <ProveedorArrastre id={arrastre.arrastrandoId}>
           <FlatList
             ref={lista}
             data={paradas}
             scrollEnabled={!arrastre.arrastrando}
-            // La fila que se arrastra se dibuja encima de las demás
-            CellRendererComponent={({ item, style, ...props }: any) => (
-              <View {...props} style={[style, { zIndex: item?.id === arrastre.arrastrandoId ? 999 : 0, elevation: item?.id === arrastre.arrastrandoId ? 8 : 0 }]} />
-            )}
+            // La fila que se arrastra se dibuja encima de las demás (componente fijo para no cortar el gesto)
+            CellRendererComponent={CeldaArrastrable}
             keyExtractor={(p) => p.id}
             contentContainerStyle={styles.content}
             onScrollToIndexFailed={(info) => setTimeout(() => lista.current?.scrollToIndex({ index: info.index, animated: true }), 300)}
@@ -696,6 +695,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               )
             }}
           />
+          </ProveedorArrastre>
         </>
       )}
       {/* Organizar: botón principal para terminar y comenzar la ruta */}
