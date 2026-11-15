@@ -22,6 +22,7 @@ export default function MapaClientes({
   seleccionId,
   onPressUbicacion,
   miUbicacion,
+  onPressMapa,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
 
@@ -74,7 +75,12 @@ export default function MapaClientes({
         longitudeDelta: 0.05,
       }}
       onMapReady={encuadrar}
-      showsUserLocation={!!miUbicacion}
+      showsUserLocation={!!miUbicacion && !onPressMapa}
+      onPress={onPressMapa ? (e) => {
+        // Los toques sobre un marcador no cuentan como toque en el mapa
+        if ((e.nativeEvent as any).action === "marker-press") return;
+        onPressMapa({ latitud: e.nativeEvent.coordinate.latitude, longitud: e.nativeEvent.coordinate.longitude });
+      } : undefined}
       showsMyLocationButton={!!miUbicacion}
       onLongPress={(e) => {
         const c = e.nativeEvent.coordinate;
@@ -90,6 +96,12 @@ export default function MapaClientes({
           strokeColor={Palette.navy}
           strokeWidth={3}
         />
+      )}
+      {/* Ubicación simulada: el punto azul propio (el del GPS no sirve porque no es la posición real) */}
+      {onPressMapa && miUbicacion && (
+        <Marker coordinate={{ latitude: miUbicacion.latitud, longitude: miUbicacion.longitud }} anchor={{ x: 0.5, y: 0.5 }} title="Tú estás aquí (simulado)">
+          <View style={styles.yo} />
+        </Marker>
       )}
       {ubicaciones.map((u) => {
         const deuda = deudaTotal(u);
@@ -132,5 +144,6 @@ const styles = StyleSheet.create({
   map: { width: "100%", height: "100%" },
   numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF" },
   numeroText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF" },
   numeroSel: { minWidth: 38, height: 38, borderRadius: 19, borderWidth: 3, borderColor: Palette.orange },
 });

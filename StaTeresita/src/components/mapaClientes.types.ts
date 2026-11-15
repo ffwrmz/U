@@ -23,6 +23,8 @@ export type MapaClientesProps = {
   seleccionId?: string | null;
   /** Al tocar un punto (además de la burbuja con los datos). */
   onPressUbicacion?: (u: UbicacionMapa) => void;
+  /** Al tocar un lugar vacío del mapa (por ejemplo, para simular la ubicación). */
+  onPressMapa?: (p: { latitud: number; longitud: number }) => void;
   /** Ubicación actual del usuario ("Tú estás aquí"). */
   miUbicacion?: { latitud: number; longitud: number } | null;
 };

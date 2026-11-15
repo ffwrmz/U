@@ -5,6 +5,7 @@ import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
   comunaDe, obtenerOCrearJornadaHoy, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
+import DepuracionDia from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
@@ -42,6 +43,7 @@ const VISITA = {
 const GestionRuta = () => {
   const router = useRouter()
   const [mapaDe, setMapaDe] = useState<{ casero_id: string; nombre: string } | null>(null)
+  const [depuracion, setDepuracion] = useState(false)
   const [soyGerente, setSoyGerente] = useState(false)
   const [jornada, setJornada] = useState<Jornada | null>(null)
   const [paradas, setParadas] = useState<Parada[]>([])
@@ -340,8 +342,35 @@ const GestionRuta = () => {
               </View>
             )
           })}
+
+          {/* Depuración del día: solo gerente, para probar las rutas */}
+          {soyGerente && (
+            <View style={styles.depuracion}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.depuracionTitulo}>Depuración del día</Text>
+                <Text style={styles.sub}>Solo para pruebas: reiniciar la ruta de hoy, cambiar su estado o simular ubicación.</Text>
+              </View>
+              <Pressable style={styles.depuracionBtn} onPress={() => setDepuracion(true)}>
+                <Ionicons name="bug-outline" size={16} color={Palette.orange} />
+                <Text style={styles.depuracionBtnText}>Abrir</Text>
+              </Pressable>
+            </View>
+          )}
         </ScrollView>
       )}
+
+      <DepuracionDia
+        visible={depuracion}
+        jornada={jornada}
+        onClose={() => setDepuracion(false)}
+        onCambio={async () => {
+          try {
+            const j = await obtenerOCrearJornadaHoy(soyGerente)
+            setJornada(j)
+            await recargarParadas(j)
+          } catch {}
+        }}
+      />
 
       {/* Modal: asignar clientes */}
       <Modal visible={!!caseroModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCaseroModal(null)}>
@@ -488,6 +517,10 @@ const styles = StyleSheet.create({
   pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   pillText: { fontSize: 11, fontWeight: '700' },
   acciones: { alignItems: 'center', gap: 2 },
+  depuracion: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.5, borderColor: Palette.orange, borderStyle: 'dashed', borderRadius: 14, padding: 12, marginTop: 10 },
+  depuracionTitulo: { fontSize: 14, fontWeight: '800', color: Palette.orange },
+  depuracionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.amberSoft, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  depuracionBtnText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: Palette.text, flex: 1, marginRight: 8 },

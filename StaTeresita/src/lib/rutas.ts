@@ -143,3 +143,26 @@ export const reordenarParadas = async (ids: string[]) => {
     if (error) throw error
   }
 }
+
+// ---------- Depuración del día (solo para pruebas; el dueño tiene permiso) ----------
+// Vuelve la jornada a "En preparación" (como si no se hubiera iniciado)
+export const reiniciarJornada = async (jornadaId: string) => {
+  const { error } = await supabase.from('jornadas').update({ estado: 'preparacion', iniciada_en: null, finalizada_en: null }).eq('id', jornadaId)
+  if (error) throw error
+}
+// Deja todas las paradas de la jornada como pendientes
+export const reiniciarVisitas = async (jornadaId: string) => {
+  const { error } = await supabase.from('ruta_paradas').update({ estado: 'pendiente', visitado_en: null }).eq('jornada_id', jornadaId)
+  if (error) throw error
+}
+// Quita todas las paradas de la jornada
+export const vaciarRuta = async (jornadaId: string) => {
+  const { error } = await supabase.from('ruta_paradas').delete().eq('jornada_id', jornadaId)
+  if (error) throw error
+}
+// Reinicia la ruta de hoy para volver a probarla: paradas en pendiente y jornada en preparación
+// (no borra paradas, ventas ni pagos)
+export const reiniciarJornadaHoy = async (jornadaId: string) => {
+  await reiniciarVisitas(jornadaId)
+  await reiniciarJornada(jornadaId)
+}

@@ -1,3 +1,4 @@
+import DepuracionDia from '@/components/DepuracionDia'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -5,14 +6,14 @@ import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
-import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, Punto, puntoDe, rutaSugerida, seguirMiUbicacion, textoDistancia, ubicacionesDeParadas } from '@/lib/mapa'
+import { abrirComoLlegar, distanciaMetros, hayUbicacionSimulada, obtenerMiUbicacion, simularUbicacion, Punto, puntoDe, rutaSugerida, seguirMiUbicacion, textoDistancia, ubicacionesDeParadas } from '@/lib/mapa'
 import { EstadoParada, Jornada, lineaDireccion, listarParadas, marcarParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 const ESTADO = {
@@ -77,6 +78,9 @@ const RutaEnCurso = () => {
   const [ubicacionEstado, setUbicacionEstado] = useState<'buscando' | 'ok' | 'sin_permiso'>('buscando')
   const [ordenVista, setOrdenVista] = useState<'ruta' | 'sugerida'>('ruta')
   const [guardandoOrden, setGuardandoOrden] = useState(false)
+  // Pruebas: simular mi ubicación tocando el mapa (gerente o modo desarrollo) y panel de depuración
+  const [simulando, setSimulando] = useState(hayUbicacionSimulada())
+  const [depuracion, setDepuracion] = useState(false)
 
   const actualizarUbicacion = useCallback(async () => {
     setUbicacionEstado('buscando')
@@ -92,7 +96,8 @@ const RutaEnCurso = () => {
     let activo = true
     actualizarUbicacion().then(async (p) => {
       if (!p || !activo) return
-      const fn = await seguirMiUbicacion((q) => setMiUbicacion(q))
+      // Mientras se simula la ubicación, el GPS no la reemplaza
+      const fn = await seguirMiUbicacion((q) => { if (!hayUbicacionSimulada()) setMiUbicacion(q) })
       if (activo) dejar = fn; else fn()
     })
     return () => { activo = false; dejar?.() }
@@ -196,6 +201,18 @@ const RutaEnCurso = () => {
     ])
   }
 
+  const puedeSimular = soyGerente || __DEV__
+  const cambiarSimulacion = (activar: boolean) => {
+    setSimulando(activar)
+    if (!activar) { simularUbicacion(null); actualizarUbicacion() }
+  }
+  // Con la simulación activa, tocar el mapa me "pone" en ese punto
+  const fijarUbicacion = (p: Punto) => {
+    simularUbicacion(p)
+    setMiUbicacion(p)
+    setUbicacionEstado('ok')
+  }
+
   const marcar = async (p: Parada, nuevo: EstadoParada) => {
     setMarcando(p.id)
     try {
@@ -294,7 +311,14 @@ const RutaEnCurso = () => {
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
               miUbicacion={miUbicacion}
+              onPressMapa={simulando ? fijarUbicacion : undefined}
             />
+            {simulando && (
+              <View style={styles.simulada}>
+                <Ionicons name="flask-outline" size={13} color={Palette.onNavy} />
+                <Text style={styles.simuladaText}>Ubicación simulada · toca el mapa para moverte</Text>
+              </View>
+            )}
             {paradas.length > 0 && ubicaciones.length === 0 && (
               <View style={styles.mapaAviso}><Text style={styles.mapaAvisoText}>Estas direcciones aún no tienen ubicación en el mapa.</Text></View>
             )}
@@ -360,6 +384,21 @@ const RutaEnCurso = () => {
                     </>
                   )}
                 </View>
+
+                {/* Pruebas: simular ubicación y depuración del día */}
+                {puedeSimular && (
+                  <View style={styles.pruebas}>
+                    <Text style={styles.pruebasText}>Simular mi ubicación</Text>
+                    <Switch value={simulando} onValueChange={cambiarSimulacion}
+                      trackColor={{ false: Palette.grayPill, true: Palette.orange }} thumbColor={Palette.card} />
+                    {soyGerente && (
+                      <Pressable style={styles.pruebasBtn} onPress={() => setDepuracion(true)} hitSlop={4}>
+                        <Ionicons name="bug-outline" size={15} color={Palette.orange} />
+                        <Text style={styles.pruebasBtnText}>Depuración</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
 
                 {/* Orden de la lista: el guardado o el sugerido desde mi ubicación */}
                 <View style={styles.ordenFila}>
@@ -474,6 +513,13 @@ const RutaEnCurso = () => {
           />
         </>
       )}
+      <DepuracionDia
+        visible={depuracion}
+        jornada={jornada}
+        casas={enOrden.filter((p) => puntoDe(p.cliente)).map((p) => ({ nombre: p.cliente?.nombre ?? 'Cliente', punto: puntoDe(p.cliente) as Punto }))}
+        onClose={() => { setDepuracion(false); setSimulando(hayUbicacionSimulada()); if (hayUbicacionSimulada()) actualizarUbicacion() }}
+        onCambio={() => { setCuotas({}); cargar() }}
+      />
     </SafeAreaView>
   )
 }
@@ -517,6 +563,12 @@ const styles = StyleSheet.create({
   cercaDir: { fontSize: 12, color: Palette.textMuted },
   cercaDist: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   cercaNota: { fontSize: 12, color: Palette.textMuted },
+  simulada: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
+  simuladaText: { fontSize: 12, fontWeight: '800', color: Palette.onNavy },
+  pruebas: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: Palette.orange, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  pruebasText: { flex: 1, fontSize: 13, fontWeight: '800', color: Palette.orange },
+  pruebasBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.amberSoft, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  pruebasBtnText: { fontSize: 12, fontWeight: '800', color: Palette.orange },
   ordenFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   usarOrden: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 12, paddingVertical: 11 },
   usarOrdenText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },
