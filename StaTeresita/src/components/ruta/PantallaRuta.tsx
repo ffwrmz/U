@@ -460,7 +460,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           <View style={styles.avance}>
             <View style={styles.avanceFila}>
               <Text style={styles.avanceTexto}>{textoEstadoJornada(estado)} · {hechas} de {paradas.length} paradas</Text>
-              <Text style={styles.avanceSub}>{visitadas} estaban · {hechas - visitadas} no estaban</Text>
+              {!organizando && <Text style={styles.avanceSub}>{visitadas} estaban · {hechas - visitadas} no estaban</Text>}
             </View>
             <View style={styles.avanceFila}>
               {camino ? (
@@ -472,7 +472,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                 <Text style={styles.avanceSub}>Sin conexión al servicio de rutas: se muestra línea recta y distancias aproximadas.</Text>
               ) : null}
             </View>
-            <View style={styles.track}><View style={[styles.fill, { width: `${paradas.length ? (hechas / paradas.length) * 100 : 0}%` }]} /></View>
+            {!organizando && <View style={styles.track}><View style={[styles.fill, { width: `${paradas.length ? (hechas / paradas.length) * 100 : 0}%` }]} /></View>}
           </View>
 
           <ProveedorArrastre id={arrastre.arrastrandoId}>
@@ -489,7 +489,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
             ListHeaderComponent={
               <View style={{ gap: 8 }}>
                 {error && <Text style={styles.error}>No se pudo cargar la ruta: {error}</Text>}
-                {aviso && (
+                {aviso && !organizando && (
                   <View style={styles.avisoNavy}>
                     <Ionicons name="information-circle-outline" size={18} color={Palette.navy} />
                     <Text style={styles.avisoNavyText}>{aviso}</Text>
