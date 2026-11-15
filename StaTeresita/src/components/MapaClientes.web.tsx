@@ -56,6 +56,7 @@ export default function MapaClientes({
   miUbicacion,
   onPressMapa,
   estilo,
+  posicion,
 }: MapaClientesProps) {
   const mapRef = useRef<MapRef>(null);
   const [listo, setListo] = useState(false);
@@ -169,6 +170,12 @@ export default function MapaClientes({
           ) : undefined}
         </Marker>
       ))}
+
+      {listo && posicion && (
+        <Marker longitude={posicion.longitud} latitude={posicion.latitud} anchor="center">
+          <div title={posicion.titulo ?? "Posición"} style={{ width: 16, height: 16, borderRadius: 8, background: "#2F80ED", border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(47,128,237,0.25)" }} />
+        </Marker>
+      )}
 
       {listo && miUbicacion && (
         <Marker longitude={miUbicacion.longitud} latitude={miUbicacion.latitud} anchor="center">

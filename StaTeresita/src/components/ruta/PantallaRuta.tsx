@@ -5,7 +5,7 @@ import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
-import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
+import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, registrarPosicion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
@@ -189,6 +189,16 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const paradasRef = useRef(paradas)
   paradasRef.current = paradas
   const numeroDe = (p: Parada) => paradas.findIndex((x) => x.id === p.id) + 1
+  // Seguimiento: con mi ruta en curso, cada nueva lectura del GPS (cada ~30 s o 50 m, solo con la app abierta)
+  // se guarda en posiciones_vendedor para que el gerente vea mi recorrido. Si falla, no se avisa.
+  useEffect(() => {
+    if (organizando || !miUbicacion || !jornada || !yo) return
+    if (estadoRutaDe(jornada, estados, yo) !== 'en_curso') return
+    if (!todas.some((p) => p.vendedor_id === yo)) return
+    registrarPosicion(jornada.id, yo, miUbicacion)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [miUbicacion])
+
   // Estado de la ruta que se está viendo (la jornada, o el casero si la comenzó él)
   const estado = estadoRutaDe(jornada, estados, verDe)
   const esMia = verDe === yo

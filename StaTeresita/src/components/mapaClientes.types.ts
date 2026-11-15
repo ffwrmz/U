@@ -29,6 +29,8 @@ export type MapaClientesProps = {
   estilo?: "pin" | "punto";
   /** Al tocar un lugar vacío del mapa (por ejemplo, para simular la ubicación). */
   onPressMapa?: (p: { latitud: number; longitud: number }) => void;
+  /** Posición de un casero (seguimiento del gerente): punto azul propio, distinto del GPS del teléfono. */
+  posicion?: { latitud: number; longitud: number; titulo?: string } | null;
   /** Ubicación actual del usuario ("Tú estás aquí"). */
   miUbicacion?: { latitud: number; longitud: number } | null;
 };

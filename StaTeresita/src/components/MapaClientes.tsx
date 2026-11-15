@@ -25,6 +25,7 @@ export default function MapaClientes({
   miUbicacion,
   onPressMapa,
   estilo,
+  posicion,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
 
@@ -99,6 +100,11 @@ export default function MapaClientes({
           strokeColor={Palette.navy}
           strokeWidth={3}
         />
+      )}
+      {posicion && (
+        <Marker coordinate={{ latitude: posicion.latitud, longitude: posicion.longitud }} anchor={{ x: 0.5, y: 0.5 }} title={posicion.titulo ?? "Posición"} zIndex={20}>
+          <View style={styles.yo} />
+        </Marker>
       )}
       {/* Ubicación simulada: el punto azul propio (el del GPS no sirve porque no es la posición real) */}
       {onPressMapa && miUbicacion && (

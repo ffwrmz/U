@@ -304,6 +304,18 @@ const HomeScreen = () => {
             {rolUsuario === 'dueno' && (
               <Pressable
                 style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
+                onPress={() => router.push('../seguimiento')}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
+                  <Ionicons name="navigate-circle-outline" size={24} color={Palette.navy} />
+                </View>
+                <Text style={styles.quickText}>Seguimiento</Text>
+              </Pressable>
+            )}
+
+            {rolUsuario === 'dueno' && (
+              <Pressable
+                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
                 onPress={() => router.push('../trabajadores')}
               >
                 <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>

@@ -1,6 +1,7 @@
 // Arma los puntos del mapa (UbicacionMapa) a partir de clientes o de las paradas de una ruta.
 import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { ClienteRuta, lineaDireccion, lineaZona } from '@/lib/rutas'
+import { supabase } from '@/lib/supabase'
 import * as Location from 'expo-location'
 import { Linking, Platform } from 'react-native'
 
@@ -66,7 +67,7 @@ export const abrirComoLlegar = async (c: ClienteRuta) => {
 }
 
 // ---------- Mi ubicación y distancias ----------
-export interface Punto { latitud: number; longitud: number }
+export interface Punto { latitud: number; longitud: number; precision?: number | null }
 
 // Distancia en metros entre dos puntos (fórmula de Haversine)
 export const distanciaMetros = (a: Punto, b: Punto) => {
@@ -93,7 +94,7 @@ export const obtenerMiUbicacion = async (): Promise<Punto | null> => {
     if (status !== 'granted') ({ status } = await Location.requestForegroundPermissionsAsync())
     if (status !== 'granted') return null
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-    return { latitud: pos.coords.latitude, longitud: pos.coords.longitude }
+    return { latitud: pos.coords.latitude, longitud: pos.coords.longitude, precision: pos.coords.accuracy }
   } catch {
     return null
   }
@@ -105,7 +106,7 @@ export const seguirMiUbicacion = async (cb: (p: Punto) => void): Promise<() => v
   try {
     const sub = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
-      (pos) => cb({ latitud: pos.coords.latitude, longitud: pos.coords.longitude }),
+      (pos) => cb({ latitud: pos.coords.latitude, longitud: pos.coords.longitude, precision: pos.coords.accuracy }),
     )
     return () => sub.remove()
   } catch {
@@ -259,4 +260,43 @@ export const ordenPorCalles = async (inicio: Punto, puntos: Punto[]): Promise<nu
 export const textoDuracion = (s: number) => {
   const min = Math.max(1, Math.round(s / 60))
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`
+}
+
+// ---------- Posiciones del casero (seguimiento del gerente) ----------
+// Tabla posiciones_vendedor (ver supabase/migrations/20261115163000_posiciones_vendedor.sql)
+export interface Posicion { latitud: number; longitud: number; registrada_en: string }
+
+// Guarda mi posición en la jornada (lecturas con precisión peor que 100 m se ignoran). Si falla, no avisa.
+export const registrarPosicion = async (jornadaId: string, vendedorId: string, p: Punto) => {
+  if (p.precision != null && p.precision > 100) return
+  try {
+    await supabase.from('posiciones_vendedor').insert([{
+      jornada_id: jornadaId, vendedor_id: vendedorId, latitud: p.latitud, longitud: p.longitud, precision_m: p.precision ?? null,
+    }])
+  } catch {}
+}
+
+export const listarPosiciones = async (jornadaId: string, vendedorId: string): Promise<Posicion[]> => {
+  const { data, error } = await supabase.from('posiciones_vendedor').select('latitud, longitud, registrada_en')
+    .eq('jornada_id', jornadaId).eq('vendedor_id', vendedorId).order('registrada_en', { ascending: true }).limit(2000)
+  if (error) return []
+  return (data as Posicion[]) || []
+}
+
+// Km recorridos según las posiciones (suma en línea recta; se descartan saltos de más de 1,5 km entre lecturas)
+export const metrosRecorridos = (ps: Punto[]) => {
+  let total = 0
+  for (let i = 1; i < ps.length; i++) {
+    const d = distanciaMetros(ps[i - 1], ps[i])
+    if (d <= 1500) total += d
+  }
+  return total
+}
+
+// "hace 2 min" / "hace 1 h"
+export const haceCuanto = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'hace un momento'
+  if (s < 3600) return `hace ${Math.round(s / 60)} min`
+  return `hace ${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`
 }
