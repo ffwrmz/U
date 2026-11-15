@@ -21,6 +21,7 @@ export default function MapaClientes({
   trazarRuta,
   seleccionId,
   onPressUbicacion,
+  miUbicacion,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
 
@@ -73,6 +74,8 @@ export default function MapaClientes({
         longitudeDelta: 0.05,
       }}
       onMapReady={encuadrar}
+      showsUserLocation={!!miUbicacion}
+      showsMyLocationButton={!!miUbicacion}
       onLongPress={(e) => {
         const c = e.nativeEvent.coordinate;
         Alert.alert(

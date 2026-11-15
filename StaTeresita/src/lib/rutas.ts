@@ -135,3 +135,11 @@ export const lineaDireccion = (c: ClienteRuta) => {
 }
 // "Sector · Comuna"
 export const lineaZona = (c: ClienteRuta) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
+
+// Guarda un nuevo orden para las paradas (orden = posición en la lista, desde 1)
+export const reordenarParadas = async (ids: string[]) => {
+  for (let i = 0; i < ids.length; i++) {
+    const { error } = await supabase.from('ruta_paradas').update({ orden: i + 1 }).eq('id', ids[i])
+    if (error) throw error
+  }
+}

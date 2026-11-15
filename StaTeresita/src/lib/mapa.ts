@@ -1,6 +1,7 @@
 // Arma los puntos del mapa (UbicacionMapa) a partir de clientes o de las paradas de una ruta.
 import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { ClienteRuta, lineaDireccion, lineaZona } from '@/lib/rutas'
+import * as Location from 'expo-location'
 import { Linking, Platform } from 'react-native'
 
 const tieneCoordenadas = (c: ClienteRuta | null | undefined): c is ClienteRuta & { dir: NonNullable<ClienteRuta['dir']> } =>
@@ -62,4 +63,100 @@ export const abrirComoLlegar = async (c: ClienteRuta) => {
     if (Platform.OS !== 'web' && (await Linking.canOpenURL(nativo))) { await Linking.openURL(nativo); return }
   } catch {}
   await Linking.openURL(web)
+}
+
+// ---------- Mi ubicación y distancias ----------
+export interface Punto { latitud: number; longitud: number }
+
+// Distancia en metros entre dos puntos (fórmula de Haversine)
+export const distanciaMetros = (a: Punto, b: Punto) => {
+  const R = 6371000
+  const rad = (g: number) => (g * Math.PI) / 180
+  const dLat = rad(b.latitud - a.latitud)
+  const dLng = rad(b.longitud - a.longitud)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitud)) * Math.cos(rad(b.latitud)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+// "350 m" / "1,2 km"
+export const textoDistancia = (m: number) =>
+  m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`
+
+// Coordenadas de la casa de un cliente (o null si no tiene)
+export const puntoDe = (c: ClienteRuta | null | undefined): Punto | null =>
+  tieneCoordenadas(c) ? { latitud: Number(c.dir.latitud), longitud: Number(c.dir.longitud) } : null
+
+// Ubicación actual del teléfono. Pide permiso la primera vez; devuelve null si no se da o falla.
+export const obtenerMiUbicacion = async (): Promise<Punto | null> => {
+  try {
+    let { status } = await Location.getForegroundPermissionsAsync()
+    if (status !== 'granted') ({ status } = await Location.requestForegroundPermissionsAsync())
+    if (status !== 'granted') return null
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+    return { latitud: pos.coords.latitude, longitud: pos.coords.longitude }
+  } catch {
+    return null
+  }
+}
+
+// Sigue la ubicación mientras la pantalla está abierta (cada ~30 s o al moverse 50 m).
+// Devuelve una función para dejar de seguirla. Asume que el permiso ya se dio.
+export const seguirMiUbicacion = async (cb: (p: Punto) => void): Promise<() => void> => {
+  try {
+    const sub = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
+      (pos) => cb({ latitud: pos.coords.latitude, longitud: pos.coords.longitude }),
+    )
+    return () => sub.remove()
+  } catch {
+    return () => {}
+  }
+}
+
+// ---------- Ruta sugerida desde mi ubicación ----------
+// Ordena las paradas para recorrerlas partiendo desde `inicio`: primero "vecino más cercano"
+// (siempre a la más cercana que falte) y después se mejora con 2-opt (invierte tramos si acorta el total).
+// Distancias en línea recta. Devuelve el orden (índices de `puntos`), cada tramo y el total en metros.
+export const rutaSugerida = (inicio: Punto, puntos: Punto[]) => {
+  const n = puntos.length
+  if (n === 0) return { orden: [] as number[], tramos: [] as number[], total: 0 }
+
+  // 1) Vecino más cercano
+  const orden: number[] = []
+  const usado = new Array(n).fill(false)
+  let actual = inicio
+  for (let k = 0; k < n; k++) {
+    let mejor = -1
+    let mejorD = Infinity
+    for (let i = 0; i < n; i++) {
+      if (usado[i]) continue
+      const d = distanciaMetros(actual, puntos[i])
+      if (d < mejorD) { mejorD = d; mejor = i }
+    }
+    usado[mejor] = true
+    orden.push(mejor)
+    actual = puntos[mejor]
+  }
+
+  // 2) 2-opt para un camino abierto que parte en `inicio` (pocas pasadas: las rutas son chicas)
+  const p = (k: number) => (k < 0 ? inicio : puntos[orden[k]])
+  const d = (a: number, b: number) => distanciaMetros(p(a), p(b))
+  let mejoro = true
+  for (let pasada = 0; mejoro && pasada < 20; pasada++) {
+    mejoro = false
+    for (let i = 0; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        // Tramo i..j invertido: cambian las aristas (i-1, i) y (j, j+1)
+        const antes = d(i - 1, i) + (j + 1 < n ? d(j, j + 1) : 0)
+        const despues = d(i - 1, j) + (j + 1 < n ? d(i, j + 1) : 0)
+        if (despues + 1e-6 < antes) {
+          orden.splice(i, j - i + 1, ...orden.slice(i, j + 1).reverse())
+          mejoro = true
+        }
+      }
+    }
+  }
+
+  const tramos = orden.map((_, k) => d(k - 1, k))
+  return { orden, tramos, total: tramos.reduce((s, x) => s + x, 0) }
 }

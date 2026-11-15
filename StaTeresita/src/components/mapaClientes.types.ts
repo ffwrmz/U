@@ -23,6 +23,8 @@ export type MapaClientesProps = {
   seleccionId?: string | null;
   /** Al tocar un punto (además de la burbuja con los datos). */
   onPressUbicacion?: (u: UbicacionMapa) => void;
+  /** Ubicación actual del usuario ("Tú estás aquí"). */
+  miUbicacion?: { latitud: number; longitud: number } | null;
 };
 
 // Centro de Molina: vista inicial cuando aún no hay puntos

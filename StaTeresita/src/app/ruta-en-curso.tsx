@@ -5,13 +5,13 @@ import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
-import { abrirComoLlegar, ubicacionesDeParadas } from '@/lib/mapa'
-import { EstadoParada, Jornada, listarParadas, marcarParada, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, Punto, puntoDe, rutaSugerida, seguirMiUbicacion, textoDistancia, ubicacionesDeParadas } from '@/lib/mapa'
+import { EstadoParada, Jornada, lineaDireccion, listarParadas, marcarParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp } from '@/lib/whatsapp'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -72,6 +72,31 @@ const RutaEnCurso = () => {
   const [marcando, setMarcando] = useState<string | null>(null)
   const [abierta, setAbierta] = useState<string | null>(null) // parada con las cuotas desplegadas
   const [cuotas, setCuotas] = useState<Record<string, Cuotas | 'cargando' | { error: string }>>({})
+  // Mi ubicación y ruta sugerida desde ella
+  const [miUbicacion, setMiUbicacion] = useState<Punto | null>(null)
+  const [ubicacionEstado, setUbicacionEstado] = useState<'buscando' | 'ok' | 'sin_permiso'>('buscando')
+  const [ordenVista, setOrdenVista] = useState<'ruta' | 'sugerida'>('ruta')
+  const [guardandoOrden, setGuardandoOrden] = useState(false)
+
+  const actualizarUbicacion = useCallback(async () => {
+    setUbicacionEstado('buscando')
+    const p = await obtenerMiUbicacion()
+    setMiUbicacion(p)
+    setUbicacionEstado(p ? 'ok' : 'sin_permiso')
+    return p
+  }, [])
+
+  // Al abrir: pide la ubicación y la sigue mientras la pantalla está abierta (cada ~30 s o 50 m)
+  useEffect(() => {
+    let dejar: (() => void) | null = null
+    let activo = true
+    actualizarUbicacion().then(async (p) => {
+      if (!p || !activo) return
+      const fn = await seguirMiUbicacion((q) => setMiUbicacion(q))
+      if (activo) dejar = fn; else fn()
+    })
+    return () => { activo = false; dejar?.() }
+  }, [actualizarUbicacion])
 
   const cargar = useCallback(async () => {
     try {
@@ -106,7 +131,24 @@ const RutaEnCurso = () => {
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
 
-  const paradas = todas.filter((p) => p.vendedor_id === verDe).sort((a, b) => a.orden - b.orden)
+  const enOrden = todas.filter((p) => p.vendedor_id === verDe).sort((a, b) => a.orden - b.orden)
+  // Distancia aproximada (línea recta) desde mi ubicación a cada parada con coordenadas
+  const distancia = (p: Parada) => {
+    const q = puntoDe(p.cliente)
+    return miUbicacion && q ? distanciaMetros(miUbicacion, q) : null
+  }
+  // Ruta sugerida: las pendientes con ubicación, ordenadas para recorrerlas desde donde estoy
+  const pendientesConPunto = enOrden.filter((p) => p.estado === 'pendiente' && puntoDe(p.cliente))
+  const sugerida = miUbicacion ? rutaSugerida(miUbicacion, pendientesConPunto.map((p) => puntoDe(p.cliente) as Punto)) : null
+  const sugeridas = sugerida ? sugerida.orden.map((i) => pendientesConPunto[i]) : []
+  const tramoDe: Record<string, number> = {}
+  sugeridas.forEach((p, k) => { tramoDe[p.id] = sugerida!.tramos[k] })
+  const pendientesSinPunto = enOrden.filter((p) => p.estado === 'pendiente' && !puntoDe(p.cliente))
+  const yaMarcadas = enOrden.filter((p) => p.estado !== 'pendiente')
+  const enSugerida = ordenVista === 'sugerida' && !!sugerida
+  // En "Ruta sugerida" la lista y el mapa siguen ese orden (solo la vista, hasta apretar "Usar este orden")
+  const paradas = enSugerida ? [...sugeridas, ...pendientesSinPunto, ...yaMarcadas] : enOrden
+  const numeroDe = (p: Parada) => paradas.findIndex((x) => x.id === p.id) + 1
   const estado = jornada?.estado
   const esMia = verDe === yo
   // Marca el casero en su propia ruta, o el gerente en cualquiera; solo con la jornada en curso
@@ -114,7 +156,9 @@ const RutaEnCurso = () => {
   const hechas = paradas.filter((p) => p.estado !== 'pendiente').length
   const visitadas = paradas.filter((p) => p.estado === 'visitado').length
 
-  const ubicaciones = ubicacionesDeParadas(paradas.map((p) => ({ cliente: p.cliente, estado: p.estado })), COLORES_MAPA)
+  // En modo sugerido el mapa muestra solo lo que falta, en el orden sugerido
+  const enMapa = enSugerida ? [...sugeridas, ...pendientesSinPunto] : enOrden
+  const ubicaciones = ubicacionesDeParadas(enMapa.map((p) => ({ cliente: p.cliente, estado: p.estado })), COLORES_MAPA)
   const ubicacionDe = (p: Parada) => ubicaciones.find((u) => u.clientes.some((c) => c.id === p.cliente_id))?.id ?? null
   const paradaSel = paradas.find((p) => p.id === seleccion)
 
@@ -128,6 +172,28 @@ const RutaEnCurso = () => {
   const tocarPunto = (u: UbicacionMapa) => {
     const p = paradas.find((x) => u.clientes.some((c) => c.id === x.cliente_id))
     if (p) seleccionar(p, true)
+  }
+
+  // Guarda el orden sugerido: primero las ya marcadas (en su orden), luego la ruta sugerida y al final las sin ubicación
+  const puedeReordenar = (esMia || soyGerente) && estado !== 'finalizada'
+  const usarOrdenSugerido = () => {
+    if (!sugerida) return
+    Alert.alert('Usar este orden', 'Se cambiará el orden de la ruta de hoy al orden sugerido desde tu ubicación.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Usar este orden', onPress: async () => {
+        setGuardandoOrden(true)
+        try {
+          const ids = [...yaMarcadas, ...sugeridas, ...pendientesSinPunto].map((p) => p.id)
+          await reordenarParadas(ids)
+          setTodas((l) => l.map((x) => (ids.includes(x.id) ? { ...x, orden: ids.indexOf(x.id) + 1 } : x)))
+          setOrdenVista('ruta')
+        } catch (e: any) {
+          Alert.alert('Error', e.message ?? String(e))
+        } finally {
+          setGuardandoOrden(false)
+        }
+      } },
+    ])
   }
 
   const marcar = async (p: Parada, nuevo: EstadoParada) => {
@@ -227,6 +293,7 @@ const RutaEnCurso = () => {
               trazarRuta
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
+              miUbicacion={miUbicacion}
             />
             {paradas.length > 0 && ubicaciones.length === 0 && (
               <View style={styles.mapaAviso}><Text style={styles.mapaAvisoText}>Estas direcciones aún no tienen ubicación en el mapa.</Text></View>
@@ -258,10 +325,64 @@ const RutaEnCurso = () => {
                     <Text style={styles.avisoNavyText}>{aviso}</Text>
                   </View>
                 )}
+
+                {/* Ruta sugerida desde mi ubicación */}
+                <View style={styles.cerca}>
+                  <View style={styles.cercaTop}>
+                    <Ionicons name="locate" size={16} color={Palette.navy} />
+                    <Text style={styles.cercaTitulo}>Siguiente parada sugerida</Text>
+                    <Pressable onPress={actualizarUbicacion} hitSlop={6} disabled={ubicacionEstado === 'buscando'}>
+                      {ubicacionEstado === 'buscando'
+                        ? <ActivityIndicator size="small" color={Palette.navy} />
+                        : <Text style={styles.link}>Actualizar mi ubicación</Text>}
+                    </Pressable>
+                  </View>
+                  {ubicacionEstado === 'sin_permiso' ? (
+                    <Text style={styles.cercaNota}>No se pudo obtener tu ubicación (falta el permiso o el GPS está apagado). La ruta funciona igual, sin sugerencias.</Text>
+                  ) : !miUbicacion ? (
+                    <Text style={styles.cercaNota}>Buscando tu ubicación…</Text>
+                  ) : sugeridas.length === 0 ? (
+                    <Text style={styles.cercaNota}>No quedan paradas pendientes con ubicación en el mapa.</Text>
+                  ) : (
+                    <>
+                      <Pressable style={styles.cercaFila} onPress={() => seleccionar(sugeridas[0], true)}>
+                        <View style={styles.cercaNumero}><Ionicons name="arrow-forward" size={14} color={Palette.onNavy} /></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cercaNombre} numberOfLines={1}>{sugeridas[0].cliente?.nombre ?? 'Cliente'}</Text>
+                          <Text style={styles.cercaDir} numberOfLines={1}>{sugeridas[0].cliente ? lineaDireccion(sugeridas[0].cliente) : ''}</Text>
+                        </View>
+                        <Text style={styles.cercaDist}>{textoDistancia(sugerida!.tramos[0])}</Text>
+                      </Pressable>
+                      <Text style={styles.cercaNota}>
+                        Ruta sugerida: {sugeridas.length} paradas, unos {textoDistancia(sugerida!.total)} en total
+                        {pendientesSinPunto.length ? ` (+${pendientesSinPunto.length} sin ubicación)` : ''}. Distancias aproximadas en línea recta.
+                      </Text>
+                    </>
+                  )}
+                </View>
+
+                {/* Orden de la lista: el guardado o el sugerido desde mi ubicación */}
+                <View style={styles.ordenFila}>
+                  {([['ruta', 'Orden de la ruta'], ['sugerida', 'Ruta sugerida desde mi ubicación']] as const).map(([k, t]) => (
+                    <Pressable key={k} style={[styles.chip, ordenVista === k && styles.chipActivo, k === 'sugerida' && !sugerida && { opacity: 0.5 }]}
+                      disabled={k === 'sugerida' && !sugerida} onPress={() => setOrdenVista(k)}>
+                      <Text style={[styles.chipText, ordenVista === k && { color: Palette.onNavy }]}>{t}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {enSugerida && puedeReordenar && sugeridas.length > 1 && (
+                  <Pressable style={[styles.usarOrden, guardandoOrden && { opacity: 0.6 }]} disabled={guardandoOrden} onPress={usarOrdenSugerido}>
+                    {guardandoOrden ? <ActivityIndicator size="small" color={Palette.onNavy} /> : <Ionicons name="swap-vertical" size={16} color={Palette.onNavy} />}
+                    <Text style={styles.usarOrdenText}>Usar este orden en la ruta</Text>
+                  </Pressable>
+                )}
               </View>
             }
             ListEmptyComponent={!error && jornada ? <Text style={styles.vacio}>No hay clientes en esta ruta hoy.</Text> : undefined}
-            renderItem={({ item: p, index }) => {
+            renderItem={({ item: p }) => {
+              const index = numeroDe(p) - 1
+              // En la ruta sugerida se muestra el tramo desde la parada anterior; si no, la distancia desde mi ubicación
+              const dist = p.estado !== 'pendiente' ? null : enSugerida ? (tramoDe[p.id] ?? null) : distancia(p)
               const e = ESTADO[p.estado] ?? ESTADO.pendiente
               const c = p.cliente
               const sel = p.id === seleccion
@@ -273,7 +394,10 @@ const RutaEnCurso = () => {
                       <Text style={styles.numeroText}>{index + 1}</Text>
                     </View>
                     <View style={{ flex: 1, gap: 3 }}>
-                      <Text style={styles.nombre} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                      <View style={styles.nombreFila}>
+                        <Text style={[styles.nombre, { flex: 1 }]} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                        {dist != null && <Text style={styles.dist}>{textoDistancia(dist)}</Text>}
+                      </View>
                       {c && <DireccionCliente c={c} />}
                       <View style={[styles.pill, { backgroundColor: e.fondo }]}>
                         <Text style={[styles.pillText, { color: e.color }]}>
@@ -380,6 +504,22 @@ const styles = StyleSheet.create({
   numero: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   numeroText: { fontSize: 13, fontWeight: '800', color: Palette.onNavy },
   nombre: { fontSize: 16, fontWeight: '800', color: Palette.text },
+  nombreFila: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dist: { fontSize: 12, fontWeight: '700', color: Palette.textMuted },
+  cerca: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 8 },
+  cercaTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cercaTitulo: { flex: 1, fontSize: 14, fontWeight: '800', color: Palette.text },
+  link: { fontSize: 12, fontWeight: '800', color: Palette.orange },
+  cercaFila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.navySoft, borderRadius: 10, padding: 8 },
+  cercaNumero: { width: 26, height: 26, borderRadius: 13, backgroundColor: Palette.navy, alignItems: 'center', justifyContent: 'center' },
+  cercaNumeroText: { fontSize: 12, fontWeight: '800', color: Palette.onNavy },
+  cercaNombre: { fontSize: 14, fontWeight: '800', color: Palette.text },
+  cercaDir: { fontSize: 12, color: Palette.textMuted },
+  cercaDist: { fontSize: 13, fontWeight: '800', color: Palette.navy },
+  cercaNota: { fontSize: 12, color: Palette.textMuted },
+  ordenFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  usarOrden: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 12, paddingVertical: 11 },
+  usarOrdenText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },
   pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 },
   pillText: { fontSize: 12, fontWeight: '800' },
   iconos: { gap: 8 },
