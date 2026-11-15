@@ -2,7 +2,7 @@ import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import {
-  asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas, moverParada,
+  asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas,
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
@@ -144,7 +144,6 @@ const GestionRuta = () => {
 
   const quitar = (p: Parada) => ejecutar(() => quitarParada(p.id))
 
-  const mover = (p: Parada, delta: -1 | 1) => ejecutar(() => moverParada(paradasDe(p.vendedor_id), p.id, delta))
 
   const cambiarEstado = (nuevo: EstadoJornada) => {
     if (!jornada) return
@@ -318,8 +317,6 @@ const GestionRuta = () => {
                       </View>
                       {editable && (
                         <View style={styles.acciones}>
-                          <Pressable onPress={() => mover(p, -1)} disabled={ocupado} hitSlop={6}><Ionicons name="chevron-up" size={20} color={i === 0 ? Palette.border : Palette.navy} /></Pressable>
-                          <Pressable onPress={() => mover(p, 1)} disabled={ocupado} hitSlop={6}><Ionicons name="chevron-down" size={20} color={i === lista.length - 1 ? Palette.border : Palette.navy} /></Pressable>
                           <Pressable onPress={() => quitar(p)} disabled={ocupado} hitSlop={6}><Ionicons name="close-circle-outline" size={20} color={Palette.textFaint} /></Pressable>
                         </View>
                       )}
