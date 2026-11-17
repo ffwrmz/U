@@ -127,21 +127,11 @@ const HistorialCliente = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
-      let resto = abono
-      for (const v of pendientes) {
-        if (resto <= 0) break
-        const saldo = Number(v.saldo_pendiente)
-        const parte = Math.min(resto, saldo)
-        const { error: e1 } = await supabase.from('pagos').insert([{
-          venta_pedido_id: v.id, cobrador_id: user.id, monto_abonado: parte, metodo_pago: metodo,
-        }])
-        if (e1) throw e1
-        const nuevo = saldo - parte
-        const { error: e2 } = await supabase.from('ventas_pedidos')
-          .update({ saldo_pendiente: nuevo, estado_pago: nuevo <= 0 ? 'pagada' : 'pendiente' }).eq('id', v.id)
-        if (e2) throw e2
-        resto -= parte
-      }
+      // La base reparte el abono FIFO (o lo aplica a la compra elegida) en una sola transacción
+      const { error } = await supabase.rpc('registrar_pago', destino
+        ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id }
+        : { p_monto: abono, p_metodo: metodo, p_cliente_id: id })
+      if (error) throw error
       setModalPago(false)
       Alert.alert('Éxito', 'Pago registrado')
     } catch (e: any) {
