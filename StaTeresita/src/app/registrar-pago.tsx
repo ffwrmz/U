@@ -87,28 +87,15 @@ const RegistrarPago = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
 
-      const { error: pagoError } = await supabase
-        .from('pagos')
-        .insert([{
-          venta_pedido_id: ventaSeleccionada.id,
-          cobrador_id: user.id,
-          monto_abonado: abono
-        }])
-      
+      // Todo el pago ocurre en la base en una sola transacción (DEF-01 / DEF-07):
+      // valida rol y monto, guarda el abono, descuenta el saldo y marca "pagada" si llega a 0
+      const { error: pagoError } = await supabase.rpc('registrar_pago', {
+        p_monto: abono,
+        p_metodo: 'efectivo',
+        p_venta_id: ventaSeleccionada.id,
+      })
+
       if (pagoError) throw pagoError
-
-      const nuevoSaldo = ventaSeleccionada.saldo_pendiente - abono
-      const nuevoEstado = nuevoSaldo <= 0 ? 'pagada' : 'pendiente'
-
-      const { error: ventaError } = await supabase
-        .from('ventas_pedidos')
-        .update({ 
-          saldo_pendiente: nuevoSaldo,
-          estado_pago: nuevoEstado
-        })
-        .eq('id', ventaSeleccionada.id)
-
-      if (ventaError) throw ventaError
 
       Alert.alert('Éxito', 'Pago registrado y saldo actualizado')
       router.back()
