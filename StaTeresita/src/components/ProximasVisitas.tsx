@@ -4,124 +4,117 @@ import { omitirDia } from '@/lib/listasFijas'
 import { fechaISO, fechaLarga, PreDia, programarVisita, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
 import { Ionicons } from '@expo/vector-icons'
 import { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 
-
-// "Próximas visitas" en la ficha del cliente: días en que está preasignado (desde hoy), a mano o por una lista fija.
-// El gerente puede programar una visita (solo la fecha; el casero se elige al asignar la ruta) o quitarla.
+// "Próximas visitas" en la ficha del cliente (plegable).
+// Plegada: la fecha de la próxima visita. Desplegada: un calendario con los días de visita marcados
+// (a mano o por una lista fija, con el color de la lista). Al tocar un día marcado se ve el detalle con X para
+// quitarlo de ese día; el gerente puede tocar un día libre para programar una visita ahí.
 const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGerente: boolean }) => {
   const hoy = fechaISO(new Date())
-  const [visitas, setVisitas] = useState<PreDia[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [modal, setModal] = useState(false)
+  const [abierto, setAbierto] = useState(false)
+  const [proxima, setProxima] = useState<PreDia | null>(null)
+  const [delMes, setDelMes] = useState<PreDia[]>([])
   const [mes, setMes] = useState(() => new Date())
-  const [fecha, setFecha] = useState<string | null>(null)
-  const [guardando, setGuardando] = useState(false)
+  const [dia, setDia] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(true)
+  const [ocupado, setOcupado] = useState(false)
 
+  // Próxima visita (hasta 90 días) y visitas del mes que se muestra (desde hoy)
   const cargar = useCallback(async () => {
     try {
-      // Próximos 60 días: preasignaciones del calendario y listas fijas que incluyen al cliente
-      const hasta = new Date(); hasta.setDate(hasta.getDate() + 60)
-      const todas = await resolverPreasignados(hoy, fechaISO(hasta))
-      setVisitas(todas.filter((x) => x.cliente_id === clienteId).sort((a, b) => a.fecha.localeCompare(b.fecha)))
+      const hasta90 = new Date(); hasta90.setDate(hasta90.getDate() + 90)
+      const inicioMes = fechaISO(new Date(mes.getFullYear(), mes.getMonth(), 1))
+      const finMes = fechaISO(new Date(mes.getFullYear(), mes.getMonth() + 1, 0))
+      const desde = inicioMes > hoy ? inicioMes : hoy
+      const [prox, m] = await Promise.all([
+        resolverPreasignados(hoy, fechaISO(hasta90)),
+        finMes >= hoy ? resolverPreasignados(desde, finMes) : Promise.resolve([] as PreDia[]),
+      ])
+      setProxima(prox.filter((x) => x.cliente_id === clienteId).sort((a, b) => a.fecha.localeCompare(b.fecha))[0] ?? null)
+      setDelMes(m.filter((x) => x.cliente_id === clienteId))
     } catch {
-      setVisitas([]) // si la tabla aún no existe en Supabase, la sección queda vacía
+      setProxima(null); setDelMes([]) // si las tablas aún no existen, la sección queda vacía
     } finally {
       setCargando(false)
     }
-  }, [clienteId, hoy])
+  }, [clienteId, hoy, mes])
 
   useEffect(() => { cargar() }, [cargar])
 
-
-  const abrir = () => { setFecha(null); setMes(new Date()); setModal(true) }
-
-  const guardar = async () => {
-    if (!fecha) { Alert.alert('Programar visita', 'Elige el día.'); return }
-    setGuardando(true)
-    try {
-      await programarVisita(clienteId, fecha)
-      setModal(false)
-      cargar()
-    } catch (e: any) {
-      Alert.alert('Error', e.code === '23502' ? 'Falta aplicar en Supabase el cambio "preasignaciones_sin_casero".' : e.message ?? String(e))
-    } finally {
-      setGuardando(false)
-    }
+  const ejecutar = async (accion: () => Promise<unknown>) => {
+    setOcupado(true)
+    try { await accion() } catch (e: any) { Alert.alert('Error', e.message ?? String(e)) }
+    finally { await cargar(); setOcupado(false) }
   }
 
-  // Quitar: una preasignación se borra; una visita de lista se omite solo ese día
-  const quitar = async (v: PreDia) => {
-    try {
-      if (v.origen === 'lista' && v.lista) await omitirDia(v.fecha, v.lista.id, v.cliente_id)
-      else if (v.id) await quitarPreasignacion(v.id)
-      cargar()
-    } catch (e: any) { Alert.alert('Error', e.message ?? String(e)) }
-  }
+  const conteos: Record<string, number> = {}
+  const colores: Record<string, string> = {}
+  delMes.forEach((v) => { conteos[v.fecha] = 1; colores[v.fecha] = v.lista?.color ?? Palette.navy })
+  const visitasDia = dia ? delMes.filter((v) => v.fecha === dia) : []
+
+  // Quitar de ese día: una visita a mano se borra; una de lista se omite solo ese día
+  const quitar = (v: PreDia) => ejecutar(() => (v.origen === 'lista' && v.lista ? omitirDia(v.fecha, v.lista.id, v.cliente_id) : quitarPreasignacion(v.id!)))
 
   return (
     <View style={styles.card}>
-      <View style={styles.top}>
+      <Pressable style={styles.top} onPress={() => setAbierto((a) => !a)}>
         <Ionicons name="calendar-outline" size={18} color={Palette.navy} />
-        <Text style={styles.titulo}>Próximas visitas</Text>
-        {soyGerente && (
-          <Pressable style={styles.boton} onPress={abrir}>
-            <Ionicons name="add" size={15} color={Palette.onNavy} />
-            <Text style={styles.botonText}>Programar visita</Text>
-          </Pressable>
-        )}
-      </View>
-      {cargando ? <ActivityIndicator size="small" color={Palette.navy} />
-        : visitas.length === 0 ? <Text style={styles.sub}>No tiene visitas programadas.</Text>
-        : visitas.slice(0, 12).map((v) => (
-          <View key={`${v.fecha}-${v.id ?? v.lista?.id}`} style={styles.fila}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.fecha}>{fechaLarga(v.fecha)}{v.fecha === hoy ? ' (hoy)' : ''}</Text>
-              <Text style={styles.sub}>{v.lista ? `Lista: ${v.lista.nombre}` : 'Programada'}</Text>
-            </View>
-            {soyGerente && (
-              <Pressable onPress={() => quitar(v)} hitSlop={8} accessibilityLabel="Quitar visita">
-                <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
-              </Pressable>
-            )}
-          </View>
-        ))}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.titulo}>Próximas visitas</Text>
+          {cargando ? <Text style={styles.sub}>Cargando…</Text> : proxima ? (
+            <Text style={styles.sub}>
+              Próxima visita: <Text style={styles.fecha}>{fechaLarga(proxima.fecha)}{proxima.fecha === hoy ? ' (hoy)' : ''}</Text>
+              {proxima.lista ? ` · Lista: ${proxima.lista.nombre}` : ''}
+            </Text>
+          ) : <Text style={styles.sub}>Sin visitas programadas</Text>}
+        </View>
+        {ocupado && <ActivityIndicator size="small" color={Palette.navy} />}
+        <Ionicons name={abierto ? 'chevron-up' : 'chevron-down'} size={20} color={Palette.navy} />
+      </Pressable>
 
-      <Modal visible={modal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModal(false)}>
-        <SafeAreaView style={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitulo}>Programar visita</Text>
-            <Pressable onPress={() => setModal(false)} hitSlop={8}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-            <Text style={styles.label}>Día</Text>
-            <CalendarioMes mes={mes} hoy={hoy} seleccion={fecha} onCambiarMes={setMes} onElegir={setFecha} bloquearPasados />
-            <Pressable style={[styles.guardar, (!fecha || guardando) && { opacity: 0.6 }]} disabled={!fecha || guardando} onPress={guardar}>
-              <Text style={styles.guardarText}>{guardando ? 'Guardando...' : fecha ? `Programar para el ${fechaLarga(fecha)}` : 'Elige un día'}</Text>
-            </Pressable>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+      {abierto && (
+        <View style={{ gap: 8 }}>
+          <CalendarioMes mes={mes} hoy={hoy} seleccion={dia} conteos={conteos} colores={colores}
+            onCambiarMes={(m) => { setMes(m); setDia(null) }} onElegir={setDia} bloquearPasados />
+          {dia && (
+            <View style={styles.detalle}>
+              <Text style={styles.detalleTitulo}>{fechaLarga(dia)}</Text>
+              {visitasDia.length > 0 ? visitasDia.map((v) => (
+                <View key={`${v.id ?? v.lista?.id}`} style={styles.fila}>
+                  <Text style={[styles.sub, { flex: 1 }]}>{v.lista ? `Visita por la lista "${v.lista.nombre}"` : 'Visita programada'}</Text>
+                  {soyGerente && (
+                    <Pressable onPress={() => quitar(v)} disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar visita de este día">
+                      <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
+                    </Pressable>
+                  )}
+                </View>
+              )) : soyGerente ? (
+                <Pressable style={styles.programar} disabled={ocupado} onPress={() => ejecutar(() => programarVisita(clienteId, dia))}>
+                  <Ionicons name="add" size={16} color={Palette.onNavy} />
+                  <Text style={styles.programarText}>Programar visita este día</Text>
+                </Pressable>
+              ) : <Text style={styles.sub}>Sin visita este día.</Text>}
+            </View>
+          )}
+          {soyGerente && !dia && <Text style={styles.sub}>Toca un día para ver la visita o programar una nueva.</Text>}
+        </View>
+      )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 14, gap: 8 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titulo: { flex: 1, fontSize: 15, fontWeight: '800', color: Palette.text },
-  boton: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navy, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
-  botonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
-  sub: { fontSize: 12, color: Palette.textMuted },
-  fila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 10, padding: 10 },
-  fecha: { fontSize: 14, fontWeight: '700', color: Palette.text, textTransform: 'capitalize' },
-  modal: { flex: 1, backgroundColor: Palette.cream },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
-  modalTitulo: { fontSize: 18, fontWeight: '700', color: Palette.text },
-  label: { fontSize: 14, fontWeight: '700', color: Palette.text },
-  guardar: { backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
-  guardarText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },
+  card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 14, gap: 10 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titulo: { fontSize: 15, fontWeight: '800', color: Palette.text },
+  sub: { fontSize: 13, color: Palette.textMuted },
+  fecha: { fontWeight: '800', color: Palette.navy, textTransform: 'capitalize' },
+  detalle: { backgroundColor: Palette.cream, borderRadius: 12, padding: 10, gap: 8 },
+  detalleTitulo: { fontSize: 14, fontWeight: '800', color: Palette.text, textTransform: 'capitalize' },
+  fila: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  programar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 10, paddingVertical: 10 },
+  programarText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
 })
 
 export default ProximasVisitas

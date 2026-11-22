@@ -10,13 +10,14 @@ interface Props {
   seleccion: string | null // YYYY-MM-DD
   hoy: string // YYYY-MM-DD
   conteos?: Record<string, number> // clientes preasignados por día
+  colores?: Record<string, string> // color del marcador de un día (ej. color de la lista)
   onCambiarMes: (mes: Date) => void
   onElegir: (fecha: string) => void
   bloquearPasados?: boolean // los días anteriores a hoy no se pueden elegir
 }
 
 // Calendario mensual simple (lunes a domingo) con un número por día (clientes preasignados).
-const CalendarioMes = ({ mes, seleccion, hoy, conteos = {}, onCambiarMes, onElegir, bloquearPasados }: Props) => {
+const CalendarioMes = ({ mes, seleccion, hoy, conteos = {}, colores = {}, onCambiarMes, onElegir, bloquearPasados }: Props) => {
   const y = mes.getFullYear()
   const m = mes.getMonth()
   const primero = new Date(y, m, 1)
@@ -55,8 +56,8 @@ const CalendarioMes = ({ mes, seleccion, hoy, conteos = {}, onCambiarMes, onEleg
                 disabled={bloquearPasados && pasado} onPress={() => onElegir(f)}>
                 <Text style={[styles.numero, pasado && styles.pasado, sel && { color: Palette.onNavy }]}>{Number(f.slice(8))}</Text>
                 {n > 0 && (
-                  <View style={[styles.conteo, sel && { backgroundColor: Palette.orange }]}>
-                    <Text style={styles.conteoText}>{n}</Text>
+                  <View style={[styles.conteo, colores[f] && { backgroundColor: colores[f] }, sel && { backgroundColor: Palette.orange }]}>
+                    <Text style={[styles.conteoText, (colores[f] || sel) && { color: Palette.onNavy }]}>{n}</Text>
                   </View>
                 )}
               </Pressable>

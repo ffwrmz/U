@@ -6,7 +6,9 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
-import { fechaISO, PreDia, resolverPreasignados } from '@/lib/preasignaciones'
+import RevisionClientes from '@/components/RevisionClientes'
+import { omitirDia } from '@/lib/listasFijas'
+import { fechaISO, PreDia, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -132,6 +134,31 @@ const GestionRuta = () => {
     .filter((p) => p.vendedor_id === caseroId && sinAsignar.some((c) => c.id === p.cliente_id))
     .sort((a, b) => a.orden - b.orden)
   const nombreCaseroDe = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
+
+  // Desplegable "Preasignados para hoy" bajo cada casero: clientes del calendario de hoy (a mano o de listas fijas)
+  // que aún no están en ninguna ruta (y no son de otro casero). Plegado por defecto.
+  const [preAbiertos, setPreAbiertos] = useState<string[]>([])
+  const alternarPre = (id: string) => setPreAbiertos((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
+  const prePara = (caseroId: string) => preHoy
+    .filter((p) => (!p.vendedor_id || p.vendedor_id === caseroId) && sinAsignar.some((c) => c.id === p.cliente_id))
+    .sort((a, b) => a.orden - b.orden)
+  const recargarPre = async () => {
+    try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch {}
+  }
+  // "Agregar todos a X": primero se revisan (con X para dejar fuera a alguno de esta asignación)
+  const [revisionPre, setRevisionPre] = useState<{ casero_id: string; nombre: string; ids: string[] } | null>(null)
+  const confirmarPre = () => {
+    const r = revisionPre
+    setRevisionPre(null)
+    if (!r || !jornada || r.ids.length === 0) return
+    ejecutar(async () => { await asignarParadas(jornada.id, r.casero_id, r.ids); await recargarPre() })
+  }
+  // Quitar de la ruta de hoy: una preasignación hecha a mano se borra; uno de lista se saca solo de hoy (sigue en la lista)
+  const quitarPreDeHoy = (p: PreDia) => ejecutar(async () => {
+    if (p.origen === 'lista' && p.lista) await omitirDia(p.fecha, p.lista.id, p.cliente_id)
+    else if (p.id) await quitarPreasignacion(p.id)
+    await recargarPre()
+  })
 
   // ---------- Asignar ----------
   // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
@@ -295,16 +322,6 @@ const GestionRuta = () => {
             )}
           </View>
 
-          {/* Clientes del calendario para hoy que aún no están en ninguna ruta */}
-          {editable && preHoy.filter((p) => sinAsignar.some((c) => c.id === p.cliente_id)).length > 0 && (
-            <View style={styles.preFila}>
-              <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
-              <Text style={[styles.sub, { flex: 1 }]}>
-                Hoy hay {preHoy.filter((p) => sinAsignar.some((c) => c.id === p.cliente_id)).length} clientes del calendario sin asignar. Aparecen arriba en "Para hoy" al tocar Asignar.
-              </Text>
-            </View>
-          )}
-
           {caseros.length === 0 && (
             <View style={styles.aviso}>
               <Ionicons name="information-circle-outline" size={22} color={Palette.navy} />
@@ -344,6 +361,40 @@ const GestionRuta = () => {
                     </Pressable>
                   )}
                 </View>
+
+                {/* Preasignados para hoy (calendario), solo si hay */}
+                {editable && prePara(c.casero_id).length > 0 && (() => {
+                  const pres = prePara(c.casero_id)
+                  const abierto = preAbiertos.includes(c.casero_id)
+                  return (
+                    <View style={styles.preCaja}>
+                      <Pressable style={styles.preFila} onPress={() => alternarPre(c.casero_id)}>
+                        <Ionicons name={abierto ? 'chevron-down' : 'chevron-forward'} size={18} color={Palette.navy} />
+                        <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
+                        <Text style={[styles.preTitulo, { flex: 1 }]}>Preasignados para hoy ({pres.length})</Text>
+                        <Pressable style={[styles.preBoton, ocupado && { opacity: 0.6 }]} disabled={ocupado}
+                          onPress={() => setRevisionPre({ casero_id: c.casero_id, nombre: c.nombre, ids: pres.map((p) => p.cliente_id) })}>
+                          <Text style={styles.preBotonText}>Agregar todos a {c.nombre}</Text>
+                        </Pressable>
+                      </Pressable>
+                      {abierto && pres.map((p) => {
+                        const cp = p.cliente ?? clienteDe(p.cliente_id)
+                        return (
+                          <View key={`${p.cliente_id}-${p.id ?? p.lista?.id}`} style={styles.preItem}>
+                            <View style={{ flex: 1, gap: 2 }}>
+                              <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
+                              {cp && <DireccionCliente c={cp} compacta />}
+                              {p.lista && <Text style={styles.preLista}>Lista: {p.lista.nombre}</Text>}
+                            </View>
+                            <Pressable onPress={() => quitarPreDeHoy(p)} disabled={ocupado} hitSlop={6} accessibilityLabel="Quitar de hoy">
+                              <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
+                            </Pressable>
+                          </View>
+                        )
+                      })}
+                    </View>
+                  )
+                })()}
 
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
                 {desplegados.includes(c.casero_id) && lista.map((p, i) => {
@@ -493,6 +544,16 @@ const GestionRuta = () => {
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
       />
+      <RevisionClientes
+        visible={!!revisionPre}
+        descripcion={revisionPre ? `Vas a agregar ${revisionPre.ids.length} ${revisionPre.ids.length === 1 ? 'cliente' : 'clientes'} a la ruta de hoy de ${revisionPre.nombre}` : ''}
+        clientes={(revisionPre?.ids ?? []).map((id) => clientes.find((c) => c.id === id)).filter(Boolean) as Cliente[]}
+        notas={Object.fromEntries(preHoy.filter((p) => p.lista).map((p) => [p.cliente_id, `Lista: ${p.lista!.nombre}`]))}
+        textoBoton="Agregar"
+        onQuitar={(id) => setRevisionPre((r) => (r ? { ...r, ids: r.ids.filter((x) => x !== id) } : r))}
+        onVolver={() => setRevisionPre(null)}
+        onConfirmar={confirmarPre}
+      />
     </SafeAreaView>
   )
 }
@@ -528,6 +589,11 @@ const styles = StyleSheet.create({
   acciones: { alignItems: 'center', gap: 2 },
   preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
+  preCaja: { backgroundColor: Palette.navySoft, borderRadius: 12, padding: 8, gap: 6 },
+  preTitulo: { fontSize: 13, fontWeight: '800', color: Palette.navy },
+  preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  preBotonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
+  preItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 10, padding: 8 },
   preLista: { fontSize: 12, fontWeight: '700', color: Palette.navy },
   preOtro: { fontSize: 12, fontWeight: '700', color: Palette.amber },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
