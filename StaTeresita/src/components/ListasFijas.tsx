@@ -11,25 +11,21 @@ import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-interface Casero { id: string; nombre: string }
-// Grupo de una lista: un casero o "Sin casero" (id null)
-type Grupo = { id: string | null; nombre: string }
-const SIN_CASERO: Grupo = { id: null, nombre: 'Sin casero' }
-interface Props { caseros: Casero[]; clientes: ClienteRuta[]; onCambio: () => void }
+interface Props { clientes: ClienteRuta[]; onCambio: () => void }
 type Form = { id: string | null; nombre: string; dias_semana: number[]; dias_mes: number[]; ultimo_dia_mes: boolean; color: string }
 
 const SEMANA = [['L', 1], ['M', 2], ['M', 3], ['J', 4], ['V', 5], ['S', 6], ['D', 7]] as const
 
 // "Listas fijas" bajo el calendario: Lunes a Viernes y etiquetas propias (quincena, día 20, ...).
-// Cada lista tiene clientes con su casero; los días que calzan con su regla cuentan como preasignados.
-const ListasFijas = ({ caseros, clientes, onCambio }: Props) => {
+// Cada lista es solo una lista de clientes (sin casero); los días que calzan con su regla cuentan como
+// preasignados, y el casero se elige al asignar la ruta del día.
+const ListasFijas = ({ clientes, onCambio }: Props) => {
   const [listas, setListas] = useState<ListaFija[]>([])
   const [items, setItems] = useState<ItemLista[]>([])
   const [error, setError] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
   const [abierta, setAbierta] = useState<ListaFija | null>(null)
-  const [agregarA, setAgregarA] = useState<Grupo | null>(null)
-  const [mover, setMover] = useState<ItemLista | null>(null) // cliente a cambiar de casero dentro de la lista
+  const [agregando, setAgregando] = useState(false)
   const [form, setForm] = useState<Form | null>(null)
   const [ocupado, setOcupado] = useState(false)
 
@@ -58,8 +54,6 @@ const ListasFijas = ({ caseros, clientes, onCambio }: Props) => {
   }
 
   const itemsDe = (listaId: string) => items.filter((x) => x.lista_id === listaId)
-  const nombreDe = (id: string | null) => (id ? caseros.find((c) => c.id === id)?.nombre ?? 'Casero' : 'Sin casero')
-  const grupos: Grupo[] = [...caseros, SIN_CASERO]
 
   // ----- Nueva etiqueta / editar regla -----
   const nueva = () => setForm({ id: null, nombre: '', dias_semana: [], dias_mes: [], ultimo_dia_mes: false, color: COLORES_LISTA[1] })
@@ -88,13 +82,12 @@ const ListasFijas = ({ caseros, clientes, onCambio }: Props) => {
     ])
   }
 
-  // ----- Agregar clientes a la lista (con su casero) -----
+  // ----- Agregar clientes a la lista (sin casero) -----
   const agregar = (ids: string[]) => {
-    const casero = agregarA
     const lista = abierta
-    setAgregarA(null)
-    if (!casero || !lista || ids.length === 0) return
-    ejecutar(() => agregarALista(lista.id, casero.id, ids))
+    setAgregando(false)
+    if (!lista || ids.length === 0) return
+    ejecutar(() => agregarALista(lista.id, null, ids))
   }
 
   return (
@@ -111,13 +104,12 @@ const ListasFijas = ({ caseros, clientes, onCambio }: Props) => {
         : error ? <Text style={styles.error}>No se pudieron cargar las listas: {error}</Text>
         : listas.map((l) => {
           const its = itemsDe(l.id)
-          const deCaseros = Array.from(new Set(its.map((x) => x.vendedor_id))).map((id) => nombreDe(id))
           return (
             <Pressable key={l.id} style={styles.lista} onPress={() => setAbierta(l)}>
               <View style={[styles.punto, { backgroundColor: l.color ?? Palette.navy }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.listaNombre}>{l.nombre}</Text>
-                <Text style={styles.sub}>{textoRegla(l)} · {its.length} {its.length === 1 ? 'cliente' : 'clientes'}{deCaseros.length ? ` · ${deCaseros.join(', ')}` : ''}</Text>
+                <Text style={styles.sub}>{textoRegla(l)} · {its.length} {its.length === 1 ? 'cliente' : 'clientes'}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={Palette.textFaint} />
             </Pressable>
@@ -150,63 +142,36 @@ const ListasFijas = ({ caseros, clientes, onCambio }: Props) => {
                   </Pressable>
                 )}
               </View>
-              {grupos.map((c) => {
-                const its = itemsDe(abierta.id).filter((x) => x.vendedor_id === c.id)
-                return (
-                  <View key={c.id ?? 'sin'} style={[styles.card, c.id === null && styles.cardSin]}>
-                    <View style={styles.cardTop}>
-                      <Text style={[styles.listaNombre, { flex: 1 }]}>{c.nombre} · {its.length}</Text>
-                      <Pressable style={[styles.boton, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => setAgregarA(c)}>
-                        <Ionicons name="add" size={15} color={Palette.onNavy} />
-                        <Text style={styles.botonText}>Agregar</Text>
-                      </Pressable>
-                    </View>
-                    {its.map((it) => (
-                      <View key={it.cliente_id} style={styles.fila}>
-                        {/* Tocar el cliente permite cambiarlo de casero (o dejarlo sin casero) */}
-                        <Pressable style={{ flex: 1, gap: 2 }} onPress={() => setMover(it)}>
-                          <Text style={styles.nombre} numberOfLines={1}>{it.cliente?.nombre ?? 'Cliente'}</Text>
-                          {it.cliente && <DireccionCliente c={it.cliente} compacta />}
-                          <Text style={styles.cambiar}>Cambiar casero</Text>
-                        </Pressable>
-                        <Pressable onPress={() => ejecutar(() => quitarDeLista(abierta.id, it.cliente_id))} disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar de la lista">
-                          <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
-                        </Pressable>
-                      </View>
-                    ))}
+              <View style={styles.cardTop}>
+                <Text style={[styles.listaNombre, { flex: 1 }]}>{itemsDe(abierta.id).length} {itemsDe(abierta.id).length === 1 ? 'cliente' : 'clientes'}</Text>
+                <Pressable style={[styles.boton, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => setAgregando(true)}>
+                  <Ionicons name="add" size={15} color={Palette.onNavy} />
+                  <Text style={styles.botonText}>Agregar clientes</Text>
+                </Pressable>
+              </View>
+              {itemsDe(abierta.id).map((it) => (
+                <View key={it.cliente_id} style={styles.fila}>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={styles.nombre} numberOfLines={1}>{it.cliente?.nombre ?? 'Cliente'}</Text>
+                    {it.cliente && <DireccionCliente c={it.cliente} compacta />}
                   </View>
-                )
-              })}
+                  <Pressable onPress={() => ejecutar(() => quitarDeLista(abierta.id, it.cliente_id))} disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar de la lista">
+                    <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
+                  </Pressable>
+                </View>
+              ))}
             </ScrollView>
           )}
 
           <SelectorClientes
-            visible={!!agregarA}
-            titulo={`${abierta?.nombre ?? ''} · ${agregarA?.nombre ?? ''}`}
-            clientes={abierta && agregarA ? clientes.filter((x) => !itemsDe(abierta.id).some((it) => it.cliente_id === x.id && it.vendedor_id === agregarA.id)) : []}
-            ocupados={abierta && agregarA ? Object.fromEntries(itemsDe(abierta.id).filter((it) => it.vendedor_id !== agregarA.id).map((it) => [it.cliente_id, `En esta lista con ${nombreDe(it.vendedor_id)} (se moverá)`])) : {}}
-            moverOcupados
+            visible={agregando}
+            titulo={`Agregar a "${abierta?.nombre ?? ''}"`}
+            clientes={abierta ? clientes.filter((x) => !itemsDe(abierta.id).some((it) => it.cliente_id === x.id)) : []}
             revisarAntes="Agregar"
-            revisarDescripcion={(n) => `Vas a agregar ${n} ${n === 1 ? 'cliente' : 'clientes'} a "${abierta?.nombre ?? ''}" ${agregarA?.id ? `con ${agregarA.nombre}` : 'sin casero'}`}
-            onClose={() => setAgregarA(null)}
+            revisarDescripcion={(n) => `Vas a agregar ${n} ${n === 1 ? 'cliente' : 'clientes'} a "${abierta?.nombre ?? ''}"`}
+            onClose={() => setAgregando(false)}
             onConfirm={agregar}
           />
-          {/* Cambiar de casero a un cliente de la lista */}
-          {mover && abierta && (
-            <Pressable style={styles.capa} onPress={() => setMover(null)}>
-              <Pressable style={styles.hoja} onPress={() => {}}>
-                <Text style={styles.modalTitulo}>{mover.cliente?.nombre ?? 'Cliente'}: ¿con qué casero?</Text>
-                <View style={styles.chips}>
-                  {grupos.map((g) => (
-                    <Pressable key={g.id ?? 'sin'} style={[styles.chip, mover.vendedor_id === g.id && styles.diaOn]}
-                      onPress={() => { const it = mover; setMover(null); if (it.vendedor_id !== g.id) ejecutar(() => agregarALista(abierta.id, g.id, [it.cliente_id])) }}>
-                      <Text style={[styles.chipText, mover.vendedor_id === g.id && { color: Palette.cream }]}>{g.nombre}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </Pressable>
-            </Pressable>
-          )}
         </SafeAreaView>
       </Modal>
 
@@ -294,14 +259,9 @@ const styles = StyleSheet.create({
   acciones: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   accion: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Palette.navySoft, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   accionText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
-  card: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 8 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   boton: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navy, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   botonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '700' },
-  cardSin: { borderStyle: 'dashed', borderColor: Palette.navy },
-  cambiar: { fontSize: 11, fontWeight: '700', color: Palette.orange, marginTop: 2 },
-  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   fila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 10, padding: 10 },
   nombre: { fontSize: 14, fontWeight: '700', color: Palette.text },
   label: { fontSize: 14, fontWeight: '700', color: Palette.text },

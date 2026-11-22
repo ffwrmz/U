@@ -6,7 +6,6 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
-import RevisionClientes from '@/components/RevisionClientes'
 import { fechaISO, PreDia, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
@@ -133,18 +132,6 @@ const GestionRuta = () => {
     .filter((p) => p.vendedor_id === caseroId && sinAsignar.some((c) => c.id === p.cliente_id))
     .sort((a, b) => a.orden - b.orden)
   const nombreCaseroDe = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
-  // "Asignar preasignados": primero se revisan (se pueden quitar de esta asignación sin borrar la preasignación)
-  const [revisionPre, setRevisionPre] = useState<{ casero_id: string; nombre: string; ids: string[] } | null>(null)
-  const asignarPreasignados = (caseroId: string) => {
-    const ids = prePendientes(caseroId).map((p) => p.cliente_id)
-    setRevisionPre({ casero_id: caseroId, nombre: nombreCaseroDe(caseroId), ids })
-  }
-  const confirmarPreasignados = () => {
-    const r = revisionPre
-    setRevisionPre(null)
-    if (!r || !jornada || r.ids.length === 0) return
-    ejecutar(() => asignarParadas(jornada.id, r.casero_id, r.ids))
-  }
 
   // ---------- Asignar ----------
   // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
@@ -167,8 +154,7 @@ const GestionRuta = () => {
     // Se respeta el orden en que aparecen en la lista (filtros y orden elegidos)
     // Mismo orden que se ve: primero los preasignados a este casero, luego otros preasignados y el resto
     const visibles = [
-      ...filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal.casero_id),
-      ...filtrados.filter((c) => preDe(c.id) && !preDe(c.id)?.vendedor_id),
+      ...filtrados.filter((c) => preDe(c.id) && (!preDe(c.id)?.vendedor_id || preDe(c.id)?.vendedor_id === caseroModal.casero_id)),
       ...filtrados.filter((c) => preDe(c.id)?.vendedor_id && preDe(c.id)?.vendedor_id !== caseroModal.casero_id),
       ...filtrados.filter((c) => !preDe(c.id)),
     ]
@@ -309,6 +295,16 @@ const GestionRuta = () => {
             )}
           </View>
 
+          {/* Clientes del calendario para hoy que aún no están en ninguna ruta */}
+          {editable && preHoy.filter((p) => sinAsignar.some((c) => c.id === p.cliente_id)).length > 0 && (
+            <View style={styles.preFila}>
+              <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
+              <Text style={[styles.sub, { flex: 1 }]}>
+                Hoy hay {preHoy.filter((p) => sinAsignar.some((c) => c.id === p.cliente_id)).length} clientes del calendario sin asignar. Aparecen arriba en "Para hoy" al tocar Asignar.
+              </Text>
+            </View>
+          )}
+
           {caseros.length === 0 && (
             <View style={styles.aviso}>
               <Ionicons name="information-circle-outline" size={22} color={Palette.navy} />
@@ -350,17 +346,6 @@ const GestionRuta = () => {
                 </View>
 
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
-                {editable && prePendientes(c.casero_id).length > 0 && (
-                  <View style={styles.preFila}>
-                    <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
-                    <Text style={[styles.sub, { flex: 1 }]}>
-                      {prePendientes(c.casero_id).length} {prePendientes(c.casero_id).length === 1 ? 'preasignado pendiente' : 'preasignados pendientes'}
-                    </Text>
-                    <Pressable style={[styles.preBoton, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => asignarPreasignados(c.casero_id)}>
-                      <Text style={styles.preBotonText}>Asignar preasignados</Text>
-                    </Pressable>
-                  </View>
-                )}
                 {desplegados.includes(c.casero_id) && lista.map((p, i) => {
                   const cp = p.cliente ?? clienteDe(p.cliente_id)
                   return (
@@ -434,8 +419,9 @@ const GestionRuta = () => {
             {filtrados.length === 0 && <Text style={styles.sub}>{sinAsignar.length === 0 ? 'No quedan clientes sin asignar.' : 'Ningún cliente coincide con los filtros.'}</Text>}
             {/* Grupos: preasignados hoy a este casero, preasignados a otro casero y sin preasignar */}
             {([
-              ['Preasignados para hoy a ' + (caseroModal?.nombre ?? ''), filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal?.casero_id)],
-              ['Para hoy, sin casero', filtrados.filter((c) => preDe(c.id) && !preDe(c.id)?.vendedor_id)],
+              // Para hoy: los del calendario (a mano o de listas fijas) que aún no están en ninguna ruta
+              ['Para hoy', filtrados.filter((c) => preDe(c.id) && (!preDe(c.id)?.vendedor_id || preDe(c.id)?.vendedor_id === caseroModal?.casero_id))],
+              // Solo para preasignaciones antiguas que tenían otro casero
               ['Preasignados a otro casero', filtrados.filter((c) => preDe(c.id)?.vendedor_id && preDe(c.id)?.vendedor_id !== caseroModal?.casero_id)],
               ['Sin preasignar', filtrados.filter((c) => !preDe(c.id))],
             ] as const).map(([titulo, grupo]) => grupo.length === 0 ? null : (
@@ -507,16 +493,6 @@ const GestionRuta = () => {
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
       />
-      <RevisionClientes
-        visible={!!revisionPre}
-        descripcion={revisionPre ? `Vas a asignar ${revisionPre.ids.length} ${revisionPre.ids.length === 1 ? 'cliente' : 'clientes'} a la ruta de hoy de ${revisionPre.nombre}` : ''}
-        clientes={(revisionPre?.ids ?? []).map((id) => clientes.find((c) => c.id === id)).filter(Boolean) as Cliente[]}
-        textoBoton="Asignar"
-        notas={Object.fromEntries(preHoy.filter((p) => p.lista).map((p) => [p.cliente_id, `Lista: ${p.lista!.nombre}`]))}
-        onQuitar={(id) => setRevisionPre((r) => (r ? { ...r, ids: r.ids.filter((x) => x !== id) } : r))}
-        onVolver={() => setRevisionPre(null)}
-        onConfirmar={confirmarPreasignados}
-      />
     </SafeAreaView>
   )
 }
@@ -551,8 +527,6 @@ const styles = StyleSheet.create({
   dirText: { flex: 1, fontSize: 12, color: Palette.textMuted },
   acciones: { alignItems: 'center', gap: 2 },
   preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
-  preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
-  preBotonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
   preLista: { fontSize: 12, fontWeight: '700', color: Palette.navy },
   preOtro: { fontSize: 12, fontWeight: '700', color: Palette.amber },

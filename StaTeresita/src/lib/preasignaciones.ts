@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 export interface Preasignacion {
   id: string
   fecha: string // YYYY-MM-DD
-  vendedor_id: string
+  vendedor_id: string | null // las nuevas se guardan sin casero (se elige al asignar la ruta del día)
   cliente_id: string
   orden: number
   nota: string | null
@@ -33,34 +33,21 @@ export const listarPreasignaciones = async (desde: string, hasta: string): Promi
   return ((data as any[]) || []) as Preasignacion[]
 }
 
-// Próximas preasignaciones de un cliente (desde hoy)
-export const preasignacionesDeCliente = async (clienteId: string, desde: string): Promise<Preasignacion[]> => {
-  const { data, error } = await supabase.from('preasignaciones').select('id, fecha, vendedor_id, cliente_id, orden, nota')
-    .eq('cliente_id', clienteId).gte('fecha', desde).order('fecha')
-  if (error) throw error
-  return ((data as any[]) || []).map((x) => ({ ...x, cliente: null })) as Preasignacion[]
-}
-
-// Agrega clientes al final de lo preasignado a ese casero ese día (si un cliente ya está ese día, se ignora)
-export const preasignar = async (fecha: string, vendedorId: string, clienteIds: string[]) => {
+// Agrega clientes al final de lo preasignado ese día (si un cliente ya está ese día, se ignora).
+// Sin casero por defecto: el casero se elige en Asignar clientes.
+export const preasignar = async (fecha: string, vendedorId: string | null, clienteIds: string[]) => {
   if (clienteIds.length === 0) return
   const { data: ultima } = await supabase.from('preasignaciones').select('orden')
-    .eq('fecha', fecha).eq('vendedor_id', vendedorId).order('orden', { ascending: false }).limit(1).maybeSingle()
+    .eq('fecha', fecha).order('orden', { ascending: false }).limit(1).maybeSingle()
   const base = ultima?.orden ?? 0
   const filas = clienteIds.map((cliente_id, i) => ({ fecha, vendedor_id: vendedorId, cliente_id, orden: base + i + 1 }))
   const { error } = await supabase.from('preasignaciones').upsert(filas, { onConflict: 'fecha,cliente_id', ignoreDuplicates: true })
   if (error) throw error
 }
 
-// Programa (o cambia de casero) la visita de un cliente para una fecha
-export const programarVisita = async (clienteId: string, fecha: string, vendedorId: string) => {
-  const { data: existente } = await supabase.from('preasignaciones').select('id').eq('fecha', fecha).eq('cliente_id', clienteId).maybeSingle()
-  if (existente) {
-    const { error } = await supabase.from('preasignaciones').update({ vendedor_id: vendedorId }).eq('id', existente.id)
-    if (error) throw error
-  } else {
-    await preasignar(fecha, vendedorId, [clienteId])
-  }
+// Programa la visita de un cliente para una fecha (sin casero). Si ya estaba ese día, no hace nada.
+export const programarVisita = async (clienteId: string, fecha: string) => {
+  await preasignar(fecha, null, [clienteId])
 }
 
 export const quitarPreasignacion = async (id: string) => {

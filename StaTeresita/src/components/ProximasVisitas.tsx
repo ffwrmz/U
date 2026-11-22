@@ -2,38 +2,29 @@ import CalendarioMes from '@/components/CalendarioMes'
 import { Palette } from '@/constants/palette'
 import { omitirDia } from '@/lib/listasFijas'
 import { fechaISO, fechaLarga, PreDia, programarVisita, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
-import { ordenarCaseros } from '@/lib/rutas'
-import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-interface Casero { id: string; nombre: string }
 
-// "Próximas visitas" en la ficha del cliente: días en que está preasignado (desde hoy) y con qué casero.
-// El gerente puede programar una visita (fecha + casero) o quitarla. Tabla preasignaciones.
+// "Próximas visitas" en la ficha del cliente: días en que está preasignado (desde hoy), a mano o por una lista fija.
+// El gerente puede programar una visita (solo la fecha; el casero se elige al asignar la ruta) o quitarla.
 const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGerente: boolean }) => {
   const hoy = fechaISO(new Date())
   const [visitas, setVisitas] = useState<PreDia[]>([])
-  const [caseros, setCaseros] = useState<Casero[]>([])
   const [cargando, setCargando] = useState(true)
   const [modal, setModal] = useState(false)
   const [mes, setMes] = useState(() => new Date())
   const [fecha, setFecha] = useState<string | null>(null)
-  const [casero, setCasero] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
       // Próximos 60 días: preasignaciones del calendario y listas fijas que incluyen al cliente
       const hasta = new Date(); hasta.setDate(hasta.getDate() + 60)
-      const [todas, pe] = await Promise.all([
-        resolverPreasignados(hoy, fechaISO(hasta)),
-        supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'dueno']).neq('activo', false),
-      ])
+      const todas = await resolverPreasignados(hoy, fechaISO(hasta))
       setVisitas(todas.filter((x) => x.cliente_id === clienteId).sort((a, b) => a.fecha.localeCompare(b.fecha)))
-      setCaseros(ordenarCaseros((pe.data as Casero[]) || []))
     } catch {
       setVisitas([]) // si la tabla aún no existe en Supabase, la sección queda vacía
     } finally {
@@ -43,19 +34,18 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
 
   useEffect(() => { cargar() }, [cargar])
 
-  const nombreDe = (id: string) => caseros.find((c) => c.id === id)?.nombre ?? 'Casero'
 
-  const abrir = () => { setFecha(null); setCasero(caseros[0]?.id ?? null); setMes(new Date()); setModal(true) }
+  const abrir = () => { setFecha(null); setMes(new Date()); setModal(true) }
 
   const guardar = async () => {
-    if (!fecha || !casero) { Alert.alert('Programar visita', 'Elige el día y el casero.'); return }
+    if (!fecha) { Alert.alert('Programar visita', 'Elige el día.'); return }
     setGuardando(true)
     try {
-      await programarVisita(clienteId, fecha, casero)
+      await programarVisita(clienteId, fecha)
       setModal(false)
       cargar()
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? String(e))
+      Alert.alert('Error', e.code === '23502' ? 'Falta aplicar en Supabase el cambio "preasignaciones_sin_casero".' : e.message ?? String(e))
     } finally {
       setGuardando(false)
     }
@@ -88,7 +78,7 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
           <View key={`${v.fecha}-${v.id ?? v.lista?.id}`} style={styles.fila}>
             <View style={{ flex: 1 }}>
               <Text style={styles.fecha}>{fechaLarga(v.fecha)}{v.fecha === hoy ? ' (hoy)' : ''}</Text>
-              <Text style={styles.sub}>{v.vendedor_id ? `Con ${nombreDe(v.vendedor_id)}` : 'Sin casero'}{v.lista ? ` · Lista: ${v.lista.nombre}${v.vendedor_id ? '' : ' (sin casero)'}` : ''}</Text>
+              <Text style={styles.sub}>{v.lista ? `Lista: ${v.lista.nombre}` : 'Programada'}</Text>
             </View>
             {soyGerente && (
               <Pressable onPress={() => quitar(v)} hitSlop={8} accessibilityLabel="Quitar visita">
@@ -107,15 +97,7 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
           <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
             <Text style={styles.label}>Día</Text>
             <CalendarioMes mes={mes} hoy={hoy} seleccion={fecha} onCambiarMes={setMes} onElegir={setFecha} bloquearPasados />
-            <Text style={styles.label}>Casero</Text>
-            <View style={styles.caseros}>
-              {caseros.map((c) => (
-                <Pressable key={c.id} style={[styles.chip, casero === c.id && styles.chipActivo]} onPress={() => setCasero(c.id)}>
-                  <Text style={[styles.chipText, casero === c.id && { color: Palette.cream }]}>{c.nombre}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable style={[styles.guardar, (!fecha || !casero || guardando) && { opacity: 0.6 }]} disabled={!fecha || !casero || guardando} onPress={guardar}>
+            <Pressable style={[styles.guardar, (!fecha || guardando) && { opacity: 0.6 }]} disabled={!fecha || guardando} onPress={guardar}>
               <Text style={styles.guardarText}>{guardando ? 'Guardando...' : fecha ? `Programar para el ${fechaLarga(fecha)}` : 'Elige un día'}</Text>
             </Pressable>
           </ScrollView>
@@ -138,10 +120,6 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
   modalTitulo: { fontSize: 18, fontWeight: '700', color: Palette.text },
   label: { fontSize: 14, fontWeight: '700', color: Palette.text },
-  caseros: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
-  chipActivo: { backgroundColor: Palette.navy, borderColor: Palette.navy },
-  chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   guardar: { backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 8 },
   guardarText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },
 })
