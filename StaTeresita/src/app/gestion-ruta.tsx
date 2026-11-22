@@ -19,10 +19,10 @@ type Cliente = ClienteRuta
 type Orden = 'zona' | 'comuna' | 'sector' | 'calle' | 'nombre'
 type Selector = 'comuna' | 'sector' | 'calle' | 'orden'
 const ORDENES: { k: Orden; t: string }[] = [
-  { k: 'zona', t: 'Sector, calle y número' },
+  { k: 'zona', t: 'Sector, pasaje y número' },
   { k: 'comuna', t: 'Comuna' },
   { k: 'sector', t: 'Sector' },
-  { k: 'calle', t: 'Calle / pasaje' },
+  { k: 'calle', t: 'Pasaje' },
   { k: 'nombre', t: 'Nombre' },
 ]
 
@@ -356,7 +356,7 @@ const GestionRuta = () => {
               {([
                 ['comuna', 'Comuna', fComuna, 'comunas'],
                 ['sector', 'Sector', fSector, 'sectores'],
-                ['calle', 'Calle / pasaje', fCalle, 'calles'],
+                ['calle', 'Pasaje', fCalle, 'pasajes'],
               ] as const).map(([k, etiqueta, lista, plural]) => {
                 const on = lista.length > 0
                 return (
@@ -414,7 +414,7 @@ const GestionRuta = () => {
             <Pressable style={styles.capa} onPress={() => setSelector(null)}>
               <Pressable style={styles.hoja} onPress={() => {}}>
                 <Text style={styles.hojaTitulo}>
-                  {selector === 'orden' ? 'Ordenar por' : selector === 'calle' ? 'Calle / pasaje' : selector === 'sector' ? 'Sector' : 'Comuna'}
+                  {selector === 'orden' ? 'Ordenar por' : selector === 'calle' ? 'Pasaje' : selector === 'sector' ? 'Sector' : 'Comuna'}
                 </Text>
                 <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 6 }}>
                   {opcionesSelector.length <= 1 && selector !== 'orden' && (
