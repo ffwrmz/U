@@ -153,18 +153,6 @@ const HomeScreen = () => {
             <>
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-                {jornada?.estado === 'en_curso' && (
-                  <Pressable style={[styles.jornadaBtn, { backgroundColor: Palette.green }]} onPress={() => router.push('../ruta-en-curso')}>
-                    <Ionicons name="map" size={13} color={Palette.onNavy} />
-                    <Text style={styles.jornadaBtnText}>Ver ruta</Text>
-                  </Pressable>
-                )}
-                {jornada?.estado === 'en_curso' && (
-                  <Pressable style={styles.jornadaBtn} onPress={() => cambiarEstado('finalizada')}>
-                    <Ionicons name="stop" size={13} color={Palette.onNavy} />
-                    <Text style={styles.jornadaBtnText}>Finalizar ruta</Text>
-                  </Pressable>
-                )}
               </View>
               <View style={{ height: 14 }} />
             <View style={styles.gestionRow}>

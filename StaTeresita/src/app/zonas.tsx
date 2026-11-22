@@ -13,9 +13,10 @@ type Tabla = 'comunas' | 'sectores' | 'pasajes' | 'calles'
 interface Item { id: string; nombre: string; activo: boolean }
 interface Edicion { tabla: Tabla; id: string | null; nombre: string; padre: Record<string, string> }
 
-const SINGULAR: Record<Tabla, string> = { comunas: 'comuna', sectores: 'sector', pasajes: 'pasaje', calles: 'calle' }
+// En la app las calles del catálogo se llaman "pasajes" (la tabla pasajes ya no se usa en los formularios)
+const SINGULAR: Record<Tabla, string> = { comunas: 'comuna', sectores: 'sector', pasajes: 'pasaje', calles: 'pasaje' }
 
-// Catálogo de zonas (solo gerente): comunas → sectores → pasajes y calles.
+// Catálogo de zonas (solo gerente): comunas → sectores → pasajes (guardados en la tabla calles).
 // Se crean, renombran y desactivan (no se borran, para no romper direcciones que ya las usan).
 const Zonas = () => {
   const [cargando, setCargando] = useState(true)
@@ -128,26 +129,19 @@ const Zonas = () => {
         <BotonAgregar texto="Agregar sector" onPress={() => nuevo('sectores', { comuna_id: comuna.id })} />
         {lista.length === 0 ? <Text style={styles.vacio}>Esta comuna aún no tiene sectores.</Text> : null}
         {lista.map((s) => {
-          const np = cat.pasajes.filter((p) => p.sector_id === s.id).length
           const nc = cat.calles.filter((c) => c.sector_id === s.id).length
-          return <Fila key={s.id} tabla="sectores" item={s} onPress={() => setSector(s)} sub={`${np} pasajes · ${nc} calles`} />
+          return <Fila key={s.id} tabla="sectores" item={s} onPress={() => setSector(s)} sub={`${nc} ${nc === 1 ? 'pasaje' : 'pasajes'}`} />
         })}
       </>
     )
   } else {
-    const pasajes = cat.pasajes.filter((p) => p.sector_id === sector.id)
     const calles = cat.calles.filter((c) => c.sector_id === sector.id)
     contenido = (
       <>
-        <Text style={styles.seccion}>Calles</Text>
-        <BotonAgregar texto="Agregar calle" onPress={() => nuevo('calles', { sector_id: sector.id })} />
-        {calles.length === 0 ? <Text style={styles.vacioMini}>Sin calles.</Text> : null}
-        {calles.map((c) => <Fila key={c.id} tabla="calles" item={c} />)}
-
         <Text style={styles.seccion}>Pasajes</Text>
-        <BotonAgregar texto="Agregar pasaje" onPress={() => nuevo('pasajes', { sector_id: sector.id })} />
-        {pasajes.length === 0 ? <Text style={styles.vacioMini}>Sin pasajes.</Text> : null}
-        {pasajes.map((p) => <Fila key={p.id} tabla="pasajes" item={p} />)}
+        <BotonAgregar texto="Agregar pasaje" onPress={() => nuevo('calles', { sector_id: sector.id })} />
+        {calles.length === 0 ? <Text style={styles.vacioMini}>Sin pasajes.</Text> : null}
+        {calles.map((c) => <Fila key={c.id} tabla="calles" item={c} />)}
       </>
     )
   }
@@ -172,7 +166,7 @@ const Zonas = () => {
             </Pressable>
           ) : (
             <>
-              <Text style={styles.ayuda}>Organiza las direcciones: comuna → sector → pasajes y calles. Desactivar oculta la opción en los formularios sin borrar nada.</Text>
+              <Text style={styles.ayuda}>Organiza las direcciones: comuna → sector → pasajes. Desactivar oculta la opción en los formularios sin borrar nada.</Text>
               <Pressable style={[styles.ubicar, ubicando && { opacity: 0.7 }]} disabled={!!ubicando} onPress={ubicarTodas}>
                 {ubicando ? <ActivityIndicator size="small" color={Palette.navy} /> : <Ionicons name="location-outline" size={18} color={Palette.navy} />}
                 <Text style={styles.ubicarText}>
