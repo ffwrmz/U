@@ -6,6 +6,7 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
+import { fechaISO, listarPreasignaciones, Preasignacion } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -46,6 +47,7 @@ const GestionRuta = () => {
   const [vendedores, setVendedores] = useState<{ casero_id: string; nombre: string; furgon: string | null }[]>([])
 
   const [caseroModal, setCaseroModal] = useState<{ casero_id: string; nombre: string } | null>(null)
+  const [preHoy, setPreHoy] = useState<Preasignacion[]>([])
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
   // Filtros de selección múltiple (lista vacía = "Todos")
@@ -113,6 +115,8 @@ const GestionRuta = () => {
         const furgonDe = (id: string) => ((fs as any[]) || []).find((f) => f.responsable_id === id)?.nombre ?? null
         // Gonzalo aparece primero; el resto por nombre
         setVendedores(ordenarCaseros(((vs as any[]) || []).map((v) => ({ casero_id: v.id, nombre: v.nombre, furgon: furgonDe(v.id) }))))
+        // Preasignados para hoy (Calendario); si la tabla aún no existe, no hay
+        try { const hoy = fechaISO(new Date()); setPreHoy(await listarPreasignaciones(hoy, hoy)) } catch { setPreHoy([]) }
         setCargando(false)
       }
       leer()
@@ -122,12 +126,25 @@ const GestionRuta = () => {
   const paradasDe = (casero_id: string) => paradas.filter((p) => p.vendedor_id === casero_id).sort((a, b) => a.orden - b.orden)
   const nombreCasero = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
   const sinAsignar = clientes.filter((c) => !paradas.some((p) => p.cliente_id === c.id))
+  // Preasignados para hoy que todavía no están en la ruta de nadie
+  const preDe = (clienteId: string) => preHoy.find((p) => p.cliente_id === clienteId)
+  const prePendientes = (caseroId: string) => preHoy
+    .filter((p) => p.vendedor_id === caseroId && sinAsignar.some((c) => c.id === p.cliente_id))
+    .sort((a, b) => a.orden - b.orden)
+  const nombreCaseroDe = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
+  const asignarPreasignados = (caseroId: string) => {
+    if (!jornada) return
+    const ids = prePendientes(caseroId).map((p) => p.cliente_id)
+    ejecutar(() => asignarParadas(jornada.id, caseroId, ids))
+  }
 
   // ---------- Asignar ----------
   // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
   const abrirAsignar = (c: { casero_id: string; nombre: string }) => {
     setSeleccion([]); setBusqueda(''); setSelector(null)
     setFComuna([]); setFSector([]); setFCalle([])
+    // Los preasignados para hoy a este casero parten marcados
+    setSeleccion(prePendientes(c.casero_id).map((p) => p.cliente_id))
     setCaseroModal(c)
   }
   // Casero con la lista de clientes asignados desplegada (por defecto todas plegadas)
@@ -140,7 +157,13 @@ const GestionRuta = () => {
   const guardarAsignacion = async () => {
     if (!caseroModal || seleccion.length === 0 || !jornada) return
     // Se respeta el orden en que aparecen en la lista (filtros y orden elegidos)
-    const ids = filtrados.map((c) => c.id).filter((id) => seleccion.includes(id))
+    // Mismo orden que se ve: primero los preasignados a este casero, luego otros preasignados y el resto
+    const visibles = [
+      ...filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal.casero_id),
+      ...filtrados.filter((c) => preDe(c.id) && preDe(c.id)?.vendedor_id !== caseroModal.casero_id),
+      ...filtrados.filter((c) => !preDe(c.id)),
+    ]
+    const ids = visibles.map((c) => c.id).filter((id) => seleccion.includes(id))
     const resto = seleccion.filter((id) => !ids.includes(id))
     const casero = caseroModal.casero_id
     setCaseroModal(null)
@@ -318,6 +341,17 @@ const GestionRuta = () => {
                 </View>
 
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
+                {editable && prePendientes(c.casero_id).length > 0 && (
+                  <View style={styles.preFila}>
+                    <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
+                    <Text style={[styles.sub, { flex: 1 }]}>
+                      {prePendientes(c.casero_id).length} {prePendientes(c.casero_id).length === 1 ? 'preasignado pendiente' : 'preasignados pendientes'}
+                    </Text>
+                    <Pressable style={[styles.preBoton, ocupado && { opacity: 0.6 }]} disabled={ocupado} onPress={() => asignarPreasignados(c.casero_id)}>
+                      <Text style={styles.preBotonText}>Asignar preasignados</Text>
+                    </Pressable>
+                  </View>
+                )}
                 {desplegados.includes(c.casero_id) && lista.map((p, i) => {
                   const cp = p.cliente ?? clienteDe(p.cliente_id)
                   return (
@@ -389,18 +423,30 @@ const GestionRuta = () => {
           </View>
           <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
             {filtrados.length === 0 && <Text style={styles.sub}>{sinAsignar.length === 0 ? 'No quedan clientes sin asignar.' : 'Ningún cliente coincide con los filtros.'}</Text>}
-            {filtrados.map((c) => {
-              const activo = seleccion.includes(c.id)
-              return (
-                <Pressable key={c.id} style={[styles.opcion, activo && styles.opcionActiva]} onPress={() => alternar(c.id)}>
-                  <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={22} color={activo ? Palette.navy : Palette.textFaint} />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.paradaNombre}>{c.nombre}</Text>
-                    <DireccionCliente c={c} />
-                  </View>
-                </Pressable>
-              )
-            })}
+            {/* Grupos: preasignados hoy a este casero, preasignados a otro casero y sin preasignar */}
+            {([
+              ['Preasignados para hoy a ' + (caseroModal?.nombre ?? ''), filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal?.casero_id)],
+              ['Preasignados a otro casero', filtrados.filter((c) => preDe(c.id) && preDe(c.id)?.vendedor_id !== caseroModal?.casero_id)],
+              ['Sin preasignar', filtrados.filter((c) => !preDe(c.id))],
+            ] as const).map(([titulo, grupo]) => grupo.length === 0 ? null : (
+              <View key={titulo} style={{ gap: 8 }}>
+                {preHoy.length > 0 && <Text style={styles.grupoTitulo}>{titulo} ({grupo.length})</Text>}
+                {grupo.map((c) => {
+                  const activo = seleccion.includes(c.id)
+                  const otro = preDe(c.id) && preDe(c.id)?.vendedor_id !== caseroModal?.casero_id ? preDe(c.id)!.vendedor_id : null
+                  return (
+                    <Pressable key={c.id} style={[styles.opcion, activo && styles.opcionActiva]} onPress={() => alternar(c.id)}>
+                      <Ionicons name={activo ? 'checkbox' : 'square-outline'} size={22} color={activo ? Palette.navy : Palette.textFaint} />
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={styles.paradaNombre}>{c.nombre}</Text>
+                        <DireccionCliente c={c} />
+                        {otro && <Text style={styles.preOtro}>Preasignado a {nombreCaseroDe(otro)}</Text>}
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ))}
           </ScrollView>
           <View style={{ padding: 16 }}>
             <Pressable style={[styles.boton, seleccion.length === 0 && { opacity: 0.5 }]}
@@ -483,6 +529,11 @@ const styles = StyleSheet.create({
   dirRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dirText: { flex: 1, fontSize: 12, color: Palette.textMuted },
   acciones: { alignItems: 'center', gap: 2 },
+  preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
+  preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  preBotonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
+  grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
+  preOtro: { fontSize: 12, fontWeight: '700', color: Palette.amber },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },
   modalTitle: { fontSize: 18, fontWeight: '700', color: Palette.text, flex: 1, marginRight: 8 },

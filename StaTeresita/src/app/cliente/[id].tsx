@@ -1,4 +1,5 @@
 import Header from '@/components/Header'
+import ProximasVisitas from '@/components/ProximasVisitas'
 import SelectorDireccion from '@/components/SelectorDireccion'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
@@ -251,6 +252,9 @@ const HistorialCliente = () => {
               </Pressable>
             ) : null}
           </View>
+
+          {/* Días en que el cliente está preasignado a un casero (Calendario) */}
+          <ProximasVisitas clienteId={cliente.id} soyGerente={soyGerente} />
 
           <View style={styles.resumenFila}>
             <View style={styles.resumenCaja}>
