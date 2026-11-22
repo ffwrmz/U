@@ -15,7 +15,9 @@ interface Props {
   editable?: boolean
 }
 
-// Dirección en cadena: comuna → sector → pasaje (opcional) → calle, más número y referencia.
+// Dirección en cadena: comuna → sector → pasaje, más número y referencia.
+// "Pasaje" es la calle del catálogo (calles, obligatoria). El pasaje opcional del catálogo (pasajes) ya no se
+// elige aquí, pero si una dirección antigua lo tiene se conserva y se sigue mostrando en el texto de la dirección.
 // Las opciones salen del catálogo que administra el gerente (pantalla Zonas).
 const SelectorDireccion = ({ catalogo, value, onChange, editable = true }: Props) => {
   const [abierto, setAbierto] = useState<Campo | null>(null)
@@ -45,8 +47,7 @@ const SelectorDireccion = ({ catalogo, value, onChange, editable = true }: Props
   const campos: { campo: Campo; label: string; vacio: string; requiere: string | null }[] = [
     { campo: 'comuna_id', label: 'Comuna *', vacio: 'Elegir comuna', requiere: null },
     { campo: 'sector_id', label: 'Sector *', vacio: 'Elegir sector', requiere: value.comuna_id },
-    { campo: 'pasaje_id', label: 'Pasaje', vacio: 'Sin pasaje', requiere: value.sector_id },
-    { campo: 'calle_id', label: 'Calle *', vacio: 'Elegir calle', requiere: value.sector_id },
+    { campo: 'calle_id', label: 'Pasaje *', vacio: 'Elegir pasaje', requiere: value.sector_id },
   ]
 
   const lista = abierto ? opciones[abierto].filter((o) => o.nombre.toLowerCase().includes(busca.trim().toLowerCase())) : []

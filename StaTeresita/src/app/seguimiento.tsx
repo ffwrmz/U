@@ -253,7 +253,7 @@ const Seguimiento = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <Header title="Seguimiento" />
+      <Header title="Seguimiento" subtitle="Lo que hace cada casero hoy" />
       {cargando ? (
         <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} />
       ) : !soyGerente ? (

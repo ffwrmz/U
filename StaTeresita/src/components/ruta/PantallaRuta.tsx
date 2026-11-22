@@ -203,7 +203,8 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const estado = estadoRutaDe(jornada, estados, verDe)
   const esMia = verDe === yo
   // Marca el casero en su propia ruta, o el gerente en cualquiera; solo con la jornada en curso
-  const puedeMarcar = !organizando && estado === 'en_curso' && (esMia || soyGerente)
+  // Solo se marca, vende y cobra en la ruta propia; el gerente ve las de los caseros en modo solo lectura
+  const puedeMarcar = !organizando && estado === 'en_curso' && esMia
   const hechas = paradas.filter((p) => p.estado !== 'pendiente').length
   const visitadas = paradas.filter((p) => p.estado === 'visitado').length
 
@@ -419,7 +420,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     : organizando ? (soyGerente || esMia ? 'Revisa el orden y la información de cada cliente. Los cobros y ventas se hacen al comenzar la ruta.' : 'Estás viendo la ruta de otro casero.')
     : estado === 'preparacion' ? 'La ruta aún no se inicia. Podrás marcar las visitas cuando el gerente la inicie.'
     : estado === 'finalizada' ? 'La jornada de hoy terminó. Solo puedes ver cómo quedó.'
-    : !puedeMarcar ? 'Estás viendo la ruta de otro casero.'
+    : !esMia ? `Estás viendo la ruta de ${caseros.find((c) => c.id === verDe)?.nombre ?? 'otro casero'} (solo lectura).`
     : null
 
   const PanelCuotas = ({ p }: { p: Parada }) => {
@@ -459,7 +460,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <Header title={organizando ? 'Organizar ruta' : 'Ruta en curso'} />
+      <Header title={organizando ? 'Organizar ruta' : 'Ruta en curso'} subtitle={organizando ? 'Ordena las visitas antes de salir' : 'Marca cada visita, vende y cobra'} />
       {cargando ? (
         <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} />
       ) : (

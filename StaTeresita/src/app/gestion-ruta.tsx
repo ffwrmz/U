@@ -124,10 +124,15 @@ const GestionRuta = () => {
   const sinAsignar = clientes.filter((c) => !paradas.some((p) => p.cliente_id === c.id))
 
   // ---------- Asignar ----------
+  // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
   const abrirAsignar = (c: { casero_id: string; nombre: string }) => {
     setSeleccion([]); setBusqueda(''); setSelector(null)
+    setFComuna([]); setFSector([]); setFCalle([])
     setCaseroModal(c)
   }
+  // Casero con la lista de clientes asignados desplegada (por defecto todas plegadas)
+  const [desplegados, setDesplegados] = useState<string[]>([])
+  const alternarDesplegado = (id: string) => setDesplegados((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
 
   const alternar = (id: string) =>
     setSeleccion((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
@@ -225,7 +230,7 @@ const GestionRuta = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <Header title="Gestionar ruta" />
+      <Header title="Asignar clientes" subtitle="Elige qué clientes visita cada casero hoy" />
 
       {cargando ? (
         <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} />
@@ -286,12 +291,18 @@ const GestionRuta = () => {
             return (
               <View key={c.casero_id} style={styles.caseroCard}>
                 <View style={styles.caseroTop}>
+                  {/* Desplegar u ocultar los clientes ya asignados */}
+                  <Pressable onPress={() => alternarDesplegado(c.casero_id)} hitSlop={8} disabled={lista.length === 0}
+                    accessibilityLabel={desplegados.includes(c.casero_id) ? 'Ocultar clientes asignados' : 'Ver clientes asignados'}>
+                    <Ionicons name={desplegados.includes(c.casero_id) ? 'chevron-down' : 'chevron-forward'} size={22}
+                      color={lista.length === 0 ? Palette.border : Palette.navy} />
+                  </Pressable>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarText}>{c.nombre.slice(0, 1).toUpperCase()}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.caseroNombre}>{c.nombre}</Text>
-                    <Text style={styles.sub}>{c.furgon ? `${c.furgon} · ` : ''}{lista.length} clientes</Text>
+                    <Text style={styles.sub}>{c.furgon ? `${c.furgon} · ` : ''}{lista.length} {lista.length === 1 ? 'cliente asignado' : 'clientes asignados'}</Text>
                   </View>
                   {lista.length > 0 && (
                     <Pressable style={styles.botonMapa} onPress={() => setMapaDe(c)} accessibilityLabel={`Ver la ruta de ${c.nombre} en el mapa`} hitSlop={4}>
@@ -307,7 +318,7 @@ const GestionRuta = () => {
                 </View>
 
                 {lista.length === 0 && <Text style={styles.sub}>Sin clientes asignados.</Text>}
-                {lista.map((p, i) => {
+                {desplegados.includes(c.casero_id) && lista.map((p, i) => {
                   const cp = p.cliente ?? clienteDe(p.cliente_id)
                   return (
                     <View key={p.id} style={styles.parada}>

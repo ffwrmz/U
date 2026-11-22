@@ -31,6 +31,9 @@ const HomeScreen = () => {
   const [jornada, setJornada] = useState<Jornada | null>(null)
   // Mi ruta de hoy (paradas asignadas a este usuario)
   const [miRuta, setMiRuta] = useState<{ estado: Jornada['estado'] | null; total: number; pendientes: number }>({ estado: null, total: 0, pendientes: 0 })
+  // Clientes asignados hoy a mí (para el mapa "Mis clientes asignados" del gerente)
+  const [misClientes, setMisClientes] = useState<string[]>([])
+  const [vistaMapa, setVistaMapa] = useState<'todos' | 'asignados'>('todos')
   const soyGerente = esGerente(rolUsuario)
 
 
@@ -98,6 +101,7 @@ const HomeScreen = () => {
           const ps = await listarParadas(j.id, user.id)
           const est = await listarEstadosCaseros(j.id)
           setMiRuta({ estado: estadoRutaDe(j, est, user.id) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+          setMisClientes(ps.map((p) => p.cliente_id))
         } catch {
           setMiRuta({ estado: null, total: 0, pendientes: 0 })
         }
@@ -149,12 +153,6 @@ const HomeScreen = () => {
             <>
             <View style={styles.sectionRow}>
                 <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-                {jornada?.estado === 'preparacion' && (
-                  <Pressable style={styles.jornadaBtn} onPress={() => router.push('../organizar-ruta')}>
-                    <Ionicons name="play" size={13} color={Palette.onNavy} />
-                    <Text style={styles.jornadaBtnText}>Organizar e iniciar ruta</Text>
-                  </Pressable>
-                )}
                 {jornada?.estado === 'en_curso' && (
                   <Pressable style={[styles.jornadaBtn, { backgroundColor: Palette.green }]} onPress={() => router.push('../ruta-en-curso')}>
                     <Ionicons name="map" size={13} color={Palette.onNavy} />
@@ -351,16 +349,29 @@ const HomeScreen = () => {
           </View>
 
           {soyGerente && (() => {
-            const ubicaciones = ubicacionesDeClientes(clientesMapa, deudas)
+            // Dos vistas: todos los clientes, o solo los asignados hoy a mi ruta
+            const enVista = vistaMapa === 'todos' ? clientesMapa : clientesMapa.filter((c) => misClientes.includes(c.id))
+            const ubicaciones = ubicacionesDeClientes(enVista, deudas)
             const conUbicacion = ubicaciones.reduce((n, u) => n + u.clientes.length, 0)
             const conDeudaMapa = ubicaciones.reduce((n, u) => n + u.clientes.filter((c) => c.deuda > 0).length, 0)
-            const sinUbicacion = clientesMapa.length - conUbicacion
+            const sinUbicacion = enVista.length - conUbicacion
             return (
               <>
                 <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Mapa de clientes</Text>
+                <View style={styles.vistaFila}>
+                  {([['todos', 'Todos los clientes'], ['asignados', `Mis clientes asignados (${misClientes.length})`]] as const).map(([k, t]) => (
+                    <Pressable key={k} style={[styles.vistaChip, vistaMapa === k && styles.vistaChipActivo]} onPress={() => setVistaMapa(k)}>
+                      <Text style={[styles.vistaChipText, vistaMapa === k && { color: Palette.cream }]}>{t}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {vistaMapa === 'asignados' && misClientes.length === 0 ? (
+                  <Text style={styles.leyendaText}>No tienes clientes asignados hoy.</Text>
+                ) : (
                 <View style={styles.mapContainer}>
                   <MapaClientes ubicaciones={ubicaciones} estilo="punto" onPressCliente={(id) => router.push({ pathname: '/cliente/[id]', params: { id } } as any)} />
                 </View>
+                )}
                 {/* Leyenda: verde al día, amarillo con deuda */}
                 <View style={styles.leyendaMapa}>
                   <View style={styles.leyendaItem}>
@@ -377,13 +388,25 @@ const HomeScreen = () => {
             )
           })()}
 
-          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Clientes</Text>
+          {/* Lista de clientes: el gerente ve solo 5 (primero los que más deben) y un enlace a Clientes */}
+          <>
+          <View style={styles.sectionRow}>
+            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>{soyGerente ? 'Clientes con más deuda' : 'Clientes'}</Text>
+            {soyGerente && clientes.length > 5 && (
+              <Pressable onPress={() => router.push('../clientes')} hitSlop={6}>
+                <Text style={styles.verTodos}>Ver todos los clientes</Text>
+              </Pressable>
+            )}
+          </View>
 
           {clientes.length === 0 && (
             <Text style={styles.emptyText}>Aún no hay clientes registrados.</Text>
           )}
 
-          {clientes.map((c, i) => {
+          {(soyGerente
+            ? [...clientes].sort((a, b) => (deudas[b.id] || 0) - (deudas[a.id] || 0) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 5)
+            : clientes
+          ).map((c, i) => {
             const deuda = deudas[c.id] || 0
             return (
               <View key={c.id} style={styles.clienteRow}>
@@ -415,6 +438,7 @@ const HomeScreen = () => {
               </View>
             )
           })}
+          </>
         </View>
       </ScrollView>
     </View>
@@ -482,6 +506,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mapContainer: { height: 280, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: Palette.border, backgroundColor: Palette.card, marginBottom: 6 },
+  verTodos: { fontSize: 13, fontWeight: '800', color: Palette.orange, marginTop: 8 },
+  vistaFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  vistaChip: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 7 },
+  vistaChipActivo: { backgroundColor: Palette.navy, borderColor: Palette.navy },
+  vistaChipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   leyendaMapa: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginBottom: 16 },
   leyendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   leyendaPunto: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },

@@ -59,7 +59,7 @@ export const textoDireccion = (cat: Catalogo, d: DireccionForm) => {
 export const validarDireccion = (d: DireccionForm): string | null => {
   if (!d.comuna_id) return 'Elige la comuna'
   if (!d.sector_id) return 'Elige el sector'
-  if (!d.calle_id) return 'Elige la calle'
+  if (!d.calle_id) return 'Elige el pasaje'
   return null
 }
 

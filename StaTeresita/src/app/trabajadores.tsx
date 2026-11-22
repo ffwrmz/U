@@ -91,13 +91,8 @@ const Trabajadores = () => {
     }
   }
 
-  const cambiarActivo = (t: Trabajador, valor: boolean) => {
-    if (valor) { aplicarActivo(t, true); return }
-    Alert.alert('Desactivar trabajador', `${t.nombre} no podrá iniciar sesión ni aparecerá en rutas. Sus ventas y pagos se conservan.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Desactivar', style: 'destructive', onPress: () => aplicarActivo(t, false) },
-    ])
-  }
+  // Sin confirmación: el interruptor activa o desactiva al tiro (se puede volver a activar)
+  const cambiarActivo = (t: Trabajador, valor: boolean) => aplicarActivo(t, valor)
 
   const eliminar = (t: Trabajador) => {
     Alert.alert(

@@ -7,6 +7,8 @@ import { Palette } from '@/constants/palette'
 
 interface HeaderProps {
   title: string
+  // Texto corto bajo el título que explica qué se hace en la pantalla (opcional)
+  subtitle?: string
 }
 
 const Header = (props: HeaderProps) => {
@@ -31,7 +33,10 @@ const Header = (props: HeaderProps) => {
         <Ionicons size={22} color={Palette.onNavy} name='arrow-back-outline' />
       </Pressable>
 
-      <Text style={styles.title}>{props.title}</Text>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={styles.title}>{props.title}</Text>
+        {!!props.subtitle && <Text style={styles.subtitle} numberOfLines={1}>{props.subtitle}</Text>}
+      </View>
 
       <Pressable onPress={cerrarSesion} style={styles.iconButton}>
         <Ionicons size={22} color={Palette.onNavy} name='log-out-outline' />
@@ -60,6 +65,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  subtitle: { fontSize: 12, color: Palette.onNavyMuted, marginTop: 1 },
   title: {
     fontSize: 18,
     fontWeight: '700',
