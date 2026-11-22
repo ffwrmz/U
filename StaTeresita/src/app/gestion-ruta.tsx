@@ -6,7 +6,6 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
-import RevisionClientes from '@/components/RevisionClientes'
 import { omitirDia } from '@/lib/listasFijas'
 import { fechaISO, PreDia, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
@@ -145,13 +144,11 @@ const GestionRuta = () => {
   const recargarPre = async () => {
     try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch {}
   }
-  // "Agregar todos a X": primero se revisan (con X para dejar fuera a alguno de esta asignación)
-  const [revisionPre, setRevisionPre] = useState<{ casero_id: string; nombre: string; ids: string[] } | null>(null)
-  const confirmarPre = () => {
-    const r = revisionPre
-    setRevisionPre(null)
-    if (!r || !jornada || r.ids.length === 0) return
-    ejecutar(async () => { await asignarParadas(jornada.id, r.casero_id, r.ids); await recargarPre() })
+  // Agregar a la ruta de hoy del casero, sin confirmación (todos o uno). Los que no se agreguen siguen
+  // apareciendo en el desplegable de los demás caseros para dárselos a otro.
+  const agregarPre = (caseroId: string, ids: string[]) => {
+    if (!jornada || ids.length === 0) return
+    ejecutar(async () => { await asignarParadas(jornada.id, caseroId, ids); await recargarPre() })
   }
   // Quitar de la ruta de hoy: una preasignación hecha a mano se borra; uno de lista se saca solo de hoy (sigue en la lista)
   const quitarPreDeHoy = (p: PreDia) => ejecutar(async () => {
@@ -373,7 +370,7 @@ const GestionRuta = () => {
                         <Ionicons name="calendar-outline" size={16} color={Palette.navy} />
                         <Text style={[styles.preTitulo, { flex: 1 }]}>Preasignados para hoy ({pres.length})</Text>
                         <Pressable style={[styles.preBoton, ocupado && { opacity: 0.6 }]} disabled={ocupado}
-                          onPress={() => setRevisionPre({ casero_id: c.casero_id, nombre: c.nombre, ids: pres.map((p) => p.cliente_id) })}>
+                          onPress={() => agregarPre(c.casero_id, pres.map((p) => p.cliente_id))}>
                           <Text style={styles.preBotonText}>Agregar todos a {c.nombre}</Text>
                         </Pressable>
                       </Pressable>
@@ -386,6 +383,9 @@ const GestionRuta = () => {
                               {cp && <DireccionCliente c={cp} compacta />}
                               {p.lista && <Text style={styles.preLista}>Lista: {p.lista.nombre}</Text>}
                             </View>
+                            <Pressable onPress={() => agregarPre(c.casero_id, [p.cliente_id])} disabled={ocupado} hitSlop={6} accessibilityLabel={`Agregar a la ruta de ${c.nombre}`}>
+                              <Ionicons name="add-circle" size={24} color={Palette.navy} />
+                            </Pressable>
                             <Pressable onPress={() => quitarPreDeHoy(p)} disabled={ocupado} hitSlop={6} accessibilityLabel="Quitar de hoy">
                               <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
                             </Pressable>
@@ -543,16 +543,6 @@ const GestionRuta = () => {
         paradas={mapaDe ? paradasDe(mapaDe.casero_id).map((p) => ({ cliente: p.cliente ?? clienteDe(p.cliente_id) ?? null, estado: p.estado })) : []}
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
-      />
-      <RevisionClientes
-        visible={!!revisionPre}
-        descripcion={revisionPre ? `Vas a agregar ${revisionPre.ids.length} ${revisionPre.ids.length === 1 ? 'cliente' : 'clientes'} a la ruta de hoy de ${revisionPre.nombre}` : ''}
-        clientes={(revisionPre?.ids ?? []).map((id) => clientes.find((c) => c.id === id)).filter(Boolean) as Cliente[]}
-        notas={Object.fromEntries(preHoy.filter((p) => p.lista).map((p) => [p.cliente_id, `Lista: ${p.lista!.nombre}`]))}
-        textoBoton="Agregar"
-        onQuitar={(id) => setRevisionPre((r) => (r ? { ...r, ids: r.ids.filter((x) => x !== id) } : r))}
-        onVolver={() => setRevisionPre(null)}
-        onConfirmar={confirmarPre}
       />
     </SafeAreaView>
   )
