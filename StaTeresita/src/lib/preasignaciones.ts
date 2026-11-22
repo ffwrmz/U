@@ -73,7 +73,7 @@ export const quitarPreasignacion = async (id: string) => {
 export interface PreDia {
   fecha: string
   cliente_id: string
-  vendedor_id: string
+  vendedor_id: string | null // null: cliente de una lista fija sin casero
   orden: number
   cliente: ClienteRuta | null
   origen: 'manual' | 'lista'

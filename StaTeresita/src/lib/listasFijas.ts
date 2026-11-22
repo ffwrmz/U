@@ -14,7 +14,8 @@ export interface ListaFija {
   activo: boolean
   sistema: boolean // Lunes a Viernes: no se eliminan
 }
-export interface ItemLista { lista_id: string; cliente_id: string; vendedor_id: string; orden: number; cliente: ClienteRuta | null }
+// vendedor_id null = el cliente está en la lista sin casero (se elige el día de la visita)
+export interface ItemLista { lista_id: string; cliente_id: string; vendedor_id: string | null; orden: number; cliente: ClienteRuta | null }
 
 const SELECT_LISTA = 'id, nombre, dias_semana, dias_mes, ultimo_dia_mes, color, orden, activo, sistema'
 
@@ -75,7 +76,7 @@ export const eliminarLista = async (id: string) => {
   if (error) throw error
 }
 
-export const agregarALista = async (listaId: string, vendedorId: string, clienteIds: string[]) => {
+export const agregarALista = async (listaId: string, vendedorId: string | null, clienteIds: string[]) => {
   if (clienteIds.length === 0) return
   const { data: ultima } = await supabase.from('listas_fijas_clientes').select('orden')
     .eq('lista_id', listaId).order('orden', { ascending: false }).limit(1).maybeSingle()

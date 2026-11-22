@@ -168,7 +168,8 @@ const GestionRuta = () => {
     // Mismo orden que se ve: primero los preasignados a este casero, luego otros preasignados y el resto
     const visibles = [
       ...filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal.casero_id),
-      ...filtrados.filter((c) => preDe(c.id) && preDe(c.id)?.vendedor_id !== caseroModal.casero_id),
+      ...filtrados.filter((c) => preDe(c.id) && !preDe(c.id)?.vendedor_id),
+      ...filtrados.filter((c) => preDe(c.id)?.vendedor_id && preDe(c.id)?.vendedor_id !== caseroModal.casero_id),
       ...filtrados.filter((c) => !preDe(c.id)),
     ]
     const ids = visibles.map((c) => c.id).filter((id) => seleccion.includes(id))
@@ -434,7 +435,8 @@ const GestionRuta = () => {
             {/* Grupos: preasignados hoy a este casero, preasignados a otro casero y sin preasignar */}
             {([
               ['Preasignados para hoy a ' + (caseroModal?.nombre ?? ''), filtrados.filter((c) => preDe(c.id)?.vendedor_id === caseroModal?.casero_id)],
-              ['Preasignados a otro casero', filtrados.filter((c) => preDe(c.id) && preDe(c.id)?.vendedor_id !== caseroModal?.casero_id)],
+              ['Para hoy, sin casero', filtrados.filter((c) => preDe(c.id) && !preDe(c.id)?.vendedor_id)],
+              ['Preasignados a otro casero', filtrados.filter((c) => preDe(c.id)?.vendedor_id && preDe(c.id)?.vendedor_id !== caseroModal?.casero_id)],
               ['Sin preasignar', filtrados.filter((c) => !preDe(c.id))],
             ] as const).map(([titulo, grupo]) => grupo.length === 0 ? null : (
               <View key={titulo} style={{ gap: 8 }}>

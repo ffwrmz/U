@@ -73,12 +73,15 @@ const Calendario = () => {
   pre.forEach((p) => { conteos[p.fecha] = (conteos[p.fecha] || 0) + 1 })
   const delDia = pre.filter((p) => p.fecha === dia)
   const pasado = dia < hoy
-  const nombreDe = (id: string) => caseros.find((c) => c.id === id)?.nombre ?? 'otro casero'
+  const nombreDe = (id: string | null) => (id ? caseros.find((c) => c.id === id)?.nombre ?? 'otro casero' : 'sin casero')
+  // Clientes de listas sin casero ese día: se les elige casero solo para ese día
+  const [asignarSin, setAsignarSin] = useState<PreDia | null>(null)
 
   // Para el selector: los que ese día ya están con otro casero se pueden mover (se marcan con su nombre)
   const ocupadosPara = (vendedorId: string) => {
     const r: Record<string, string> = {}
-    delDia.filter((p) => p.vendedor_id !== vendedorId).forEach((p) => { r[p.cliente_id] = `Preasignado a ${nombreDe(p.vendedor_id)} (se moverá)` })
+    delDia.filter((p) => p.vendedor_id && p.vendedor_id !== vendedorId).forEach((p) => { r[p.cliente_id] = `Preasignado a ${nombreDe(p.vendedor_id)} (se moverá)` })
+    delDia.filter((p) => !p.vendedor_id).forEach((p) => { r[p.cliente_id] = `De la lista ${p.lista?.nombre ?? ''}, sin casero` })
     return r
   }
   const disponiblesPara = (vendedorId: string) => {
@@ -159,6 +162,37 @@ const Calendario = () => {
               </View>
             )
           })}
+          {/* Clientes de listas fijas sin casero para este día */}
+          {delDia.some((p) => !p.vendedor_id) && (
+            <View style={[styles.card, styles.cardSin]}>
+              <Text style={styles.casero}>Sin casero ({delDia.filter((p) => !p.vendedor_id).length})</Text>
+              <Text style={styles.sub}>Son de listas fijas sin casero. Elige a quién se los asignas este día.</Text>
+              {delDia.filter((p) => !p.vendedor_id).map((p) => (
+                <View key={`${p.cliente_id}-${p.lista?.id}`} style={styles.fila}>
+                  <Pressable style={{ flex: 1, gap: 2 }} onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: p.cliente_id } } as any)}>
+                    <Text style={styles.nombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
+                    {p.cliente && <DireccionCliente c={p.cliente} compacta />}
+                    {p.lista && (
+                      <View style={[styles.etiqueta, { backgroundColor: p.lista.color ?? Palette.navy }]}>
+                        <Text style={styles.etiquetaText}>{p.lista.nombre}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  {!pasado && (
+                    <>
+                      <Pressable style={styles.asignarBtn} onPress={() => setAsignarSin(p)} disabled={ocupado}>
+                        <Text style={styles.asignarBtnText}>Asignar a…</Text>
+                      </Pressable>
+                      <Pressable onPress={() => p.lista && ejecutar(() => omitirDia(dia, p.lista!.id, p.cliente_id))} disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar de este día">
+                        <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
+                      </Pressable>
+                    </>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+
           {pasado && delDia.length === 0 && <Text style={styles.vacio}>Ese día no hubo clientes preasignados.</Text>}
 
           {/* Listas fijas: Lunes a Viernes y etiquetas propias (quincena, día 20...) */}
@@ -177,6 +211,22 @@ const Calendario = () => {
         onClose={() => setAgregarA(null)}
         onConfirm={agregar}
       />
+      {/* Elegir casero para un cliente de lista sin casero (solo este día) */}
+      {asignarSin && (
+        <Pressable style={styles.capa} onPress={() => setAsignarSin(null)}>
+          <Pressable style={styles.hoja} onPress={() => {}}>
+            <Text style={styles.casero}>{asignarSin.cliente?.nombre ?? 'Cliente'}: ¿con qué casero el {fechaLarga(dia)}?</Text>
+            <View style={styles.chips}>
+              {caseros.map((c) => (
+                <Pressable key={c.id} style={styles.chip}
+                  onPress={() => { const p = asignarSin; setAsignarSin(null); ejecutar(() => programarVisita(p.cliente_id, dia, c.id)) }}>
+                  <Text style={styles.chipText}>{c.nombre}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      )}
     </SafeAreaView>
   )
 }
@@ -199,6 +249,14 @@ const styles = StyleSheet.create({
   botonText: { color: Palette.onNavy, fontSize: 13, fontWeight: '700' },
   fila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 12, padding: 10 },
   nombre: { fontSize: 14, fontWeight: '700', color: Palette.text },
+  cardSin: { borderStyle: 'dashed', borderColor: Palette.navy },
+  asignarBtn: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  asignarBtnText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
+  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
+  chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   etiqueta: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginTop: 2 },
   etiquetaText: { fontSize: 11, fontWeight: '800', color: Palette.onNavy },
 })

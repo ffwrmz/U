@@ -88,7 +88,7 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
           <View key={`${v.fecha}-${v.id ?? v.lista?.id}`} style={styles.fila}>
             <View style={{ flex: 1 }}>
               <Text style={styles.fecha}>{fechaLarga(v.fecha)}{v.fecha === hoy ? ' (hoy)' : ''}</Text>
-              <Text style={styles.sub}>Con {nombreDe(v.vendedor_id)}{v.lista ? ` · Lista: ${v.lista.nombre}` : ''}</Text>
+              <Text style={styles.sub}>{v.vendedor_id ? `Con ${nombreDe(v.vendedor_id)}` : 'Sin casero'}{v.lista ? ` · Lista: ${v.lista.nombre}${v.vendedor_id ? '' : ' (sin casero)'}` : ''}</Text>
             </View>
             {soyGerente && (
               <Pressable onPress={() => quitar(v)} hitSlop={8} accessibilityLabel="Quitar visita">
