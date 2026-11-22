@@ -30,6 +30,9 @@ interface Props {
   ocupados?: Record<string, string>
   // Si es true, los "ocupados" igual se pueden elegir (por ejemplo, para moverlos a otro casero)
   moverOcupados?: boolean
+  // Si viene, antes de confirmar se muestra la lista elegida para revisarla y quitar clientes;
+  // el texto es el del botón final (ej. "Preasignar")
+  revisarAntes?: string
   onClose: () => void
   // Recibe los clientes elegidos en el orden en que se ven en la lista
   onConfirm: (ids: string[]) => void
@@ -37,7 +40,7 @@ interface Props {
 
 // Selector de clientes con búsqueda, filtros múltiples en cadena (comuna → sector → calle/pasaje),
 // orden y "Seleccionar todos". Se usa en el Calendario de preasignaciones.
-const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupados = false, onClose, onConfirm }: Props) => {
+const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupados = false, revisarAntes, onClose, onConfirm }: Props) => {
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
   // Filtros de selección múltiple (lista vacía = "Todos")
@@ -46,11 +49,12 @@ const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupa
   const [fCalle, setFCalle] = useState<string[]>([])
   const [orden, setOrden] = useState<Orden>('zona')
   const [selector, setSelector] = useState<Selector | null>(null)
+  const [revisando, setRevisando] = useState<string[] | null>(null) // paso de revisión antes de confirmar
 
   // Al abrir se parte sin selección ni búsqueda (los filtros se mantienen para seguir en la misma zona)
   // Al abrir parte limpio: sin selección, búsqueda ni filtros
   useEffect(() => {
-    if (visible) { setSeleccion([]); setBusqueda(''); setSelector(null); setFComuna([]); setFSector([]); setFCalle([]) }
+    if (visible) { setSeleccion([]); setBusqueda(''); setSelector(null); setFComuna([]); setFSector([]); setFCalle([]); setRevisando(null) }
   }, [visible])
 
   const todos = clientes
@@ -121,7 +125,12 @@ const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupa
     // Se respeta el orden en que aparecen en la lista (filtros y orden elegidos)
     const ids = filtrados.map((c) => c.id).filter((id) => seleccion.includes(id))
     const resto = seleccion.filter((id) => !ids.includes(id))
-    onConfirm([...ids, ...resto])
+    if (revisarAntes) setRevisando([...ids, ...resto])
+    else onConfirm([...ids, ...resto])
+  }
+  const quitarDeRevision = (id: string) => {
+    setRevisando((l) => (l ? l.filter((x) => x !== id) : l))
+    setSeleccion((l) => l.filter((x) => x !== id))
   }
 
   return (
@@ -190,9 +199,49 @@ const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupa
         </ScrollView>
         <View style={{ padding: 16 }}>
           <Pressable style={[styles.boton, seleccion.length === 0 && { opacity: 0.5 }]} onPress={confirmar} disabled={seleccion.length === 0}>
-            <Text style={styles.botonText}>{`Agregar ${seleccion.length} cliente${seleccion.length === 1 ? '' : 's'}`}</Text>
+            <Text style={styles.botonText}>
+              {revisarAntes ? `Revisar ${seleccion.length} cliente${seleccion.length === 1 ? '' : 's'}` : `Agregar ${seleccion.length} cliente${seleccion.length === 1 ? '' : 's'}`}
+            </Text>
           </Pressable>
         </View>
+
+        {/* Revisión: la lista elegida, con opción de quitar, antes de confirmar */}
+        {revisando && (
+          <View style={styles.revision}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Revisa antes de confirmar ({revisando.length})</Text>
+              <Pressable onPress={() => setRevisando(null)} hitSlop={8}><Ionicons name="arrow-back" size={24} color={Palette.text} /></Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+              {revisando.length === 0 && <Text style={styles.sub}>No quedan clientes. Vuelve para elegir otros.</Text>}
+              {revisando.map((id) => {
+                const c = todos.find((x) => x.id === id)
+                if (!c) return null
+                return (
+                  <View key={id} style={styles.opcion}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.nombre}>{c.nombre}</Text>
+                      <DireccionCliente c={c} compacta />
+                      {!!ocupados[id] && <Text style={styles.ocupado}>{ocupados[id]}</Text>}
+                    </View>
+                    <Pressable onPress={() => quitarDeRevision(id)} hitSlop={8} accessibilityLabel={`Quitar a ${c.nombre}`}>
+                      <Ionicons name="close-circle" size={24} color={Palette.orange} />
+                    </Pressable>
+                  </View>
+                )
+              })}
+            </ScrollView>
+            <View style={styles.revisionBotones}>
+              <Pressable style={[styles.boton, styles.botonSecundario]} onPress={() => setRevisando(null)}>
+                <Text style={[styles.botonText, { color: Palette.navy }]}>Volver</Text>
+              </Pressable>
+              <Pressable style={[styles.boton, { flex: 1 }, revisando.length === 0 && { opacity: 0.5 }]} disabled={revisando.length === 0}
+                onPress={() => onConfirm(revisando)}>
+                <Text style={styles.botonText}>{`${revisarAntes} ${revisando.length}`}</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Selector de filtro / orden (encima del modal) */}
         {selector && (
@@ -249,6 +298,9 @@ const styles = StyleSheet.create({
   filaSeleccion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   linkText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
   linkNavy: { fontSize: 13, fontWeight: '800', color: Palette.navy },
+  revision: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.cream },
+  revisionBotones: { flexDirection: 'row', gap: 10, padding: 16 },
+  botonSecundario: { backgroundColor: Palette.navySoft, paddingHorizontal: 20 },
   capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },

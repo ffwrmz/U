@@ -160,6 +160,7 @@ const Calendario = () => {
         clientes={agregarA ? disponiblesPara(agregarA.id) : []}
         ocupados={agregarA ? ocupadosPara(agregarA.id) : {}}
         moverOcupados
+        revisarAntes="Preasignar"
         onClose={() => setAgregarA(null)}
         onConfirm={agregar}
       />
