@@ -1,8 +1,11 @@
+import EstadoCorrecciones from '@/components/EstadoCorrecciones'
 import Header from '@/components/Header'
+import PedirCorreccion, { ObjetivoCorreccion } from '@/components/PedirCorreccion'
 import ProximasVisitas from '@/components/ProximasVisitas'
 import SelectorDireccion from '@/components/SelectorDireccion'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
+import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -25,7 +28,7 @@ interface Venta {
   fecha_venta: string | null
   pagos: Pago[]
 }
-interface Linea { venta_pedido_id: string; cantidad: number; productos: { nombre: string } | null }
+interface Linea { id: string; venta_pedido_id: string; producto_id: string; cantidad: number; precio_final: number; productos: { nombre: string } | null }
 
 const fechaPago = (p: Pago) => p.fecha_pago ?? p.creado_en
 
@@ -67,6 +70,11 @@ const HistorialCliente = () => {
   const [catalogo, setCatalogo] = useState<Catalogo>(catalogoVacio)
   const [guardandoDatos, setGuardandoDatos] = useState(false)
 
+  // Pedir corrección (casero): qué se corrige, y las solicitudes ya enviadas de este cliente
+  const [objetivo, setObjetivo] = useState<ObjetivoCorreccion | null>(null)
+  const [correcciones, setCorrecciones] = useState<Correccion[]>([])
+  const [referencia, setReferencia] = useState<string | null>(null)
+
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -91,7 +99,7 @@ const HistorialCliente = () => {
       setVentas(lista)
       // Productos de cada compra (si la tabla aún no existe, simplemente no se muestran)
       if (lista.length > 0) {
-        const li = await supabase.from('venta_items').select('venta_pedido_id, cantidad, productos ( nombre )').in('venta_pedido_id', lista.map((x) => x.id))
+        const li = await supabase.from('venta_items').select('id, venta_pedido_id, producto_id, cantidad, precio_final, productos ( nombre )').in('venta_pedido_id', lista.map((x) => x.id))
         if (!li.error) setLineas((li.data as any[]) || [])
       }
       // Nombre de quien cobró cada pago
@@ -100,6 +108,14 @@ const HistorialCliente = () => {
         const pe = await supabase.from('perfiles').select('id, nombre').in('id', ids)
         if (!pe.error) setCobradores(Object.fromEntries(((pe.data as any[]) || []).map((x) => [x.id, x.nombre])))
       }
+      // Indicaciones de la casa (dirección) y solicitudes de corrección de este cliente
+      const cd = await supabase.from('clientes').select('direccion_id').eq('id', id).single()
+      const dirId = (cd.data as any)?.direccion_id
+      if (dirId) {
+        const d = await supabase.from('direcciones').select('referencia').eq('id', dirId).single()
+        setReferencia((d.data as any)?.referencia ?? null)
+      }
+      setCorrecciones(await correccionesDeCliente(id))
       setCargando(false)
     }
   }, [id])
@@ -156,11 +172,11 @@ const HistorialCliente = () => {
     let acumulado = 0
     const filas = pagos.map((p) => {
       acumulado += Number(p.monto_abonado)
-      return { fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
+      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
     }).reverse()
     const pagado = Math.max(total - Number(v.saldo_pendiente), 0)
     const pct = total > 0 ? Math.min(pagado / total, 1) : 0
-    return { total, anulada, pagada, color, fondo, nombre, filas, pagado, pct }
+    return { total, anulada, pagada, color, fondo, nombre, items, filas, pagado, pct }
   }
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
 
@@ -245,13 +261,22 @@ const HistorialCliente = () => {
               ) : null}
             </View>
             <Dato icono="location-outline" texto={cliente.direccion || 'Sin dirección'} />
+            {!!referencia && <Dato icono="home-outline" texto={referencia} />}
             {soyGerente ? (
               <Pressable style={styles.botonEditar} onPress={abrirEditar}>
                 <Ionicons name="create-outline" size={16} color={Palette.navy} />
                 <Text style={styles.botonEditarText}>Editar datos</Text>
               </Pressable>
-            ) : null}
+            ) : (
+              <Pressable style={styles.botonEditar} onPress={() => setObjetivo({ tipo: 'cliente', clienteId: cliente.id, telefono: cliente.telefono, referencia })}>
+                <Ionicons name="create-outline" size={16} color={Palette.navy} />
+                <Text style={styles.botonEditarText}>Pedir corrección de datos</Text>
+              </Pressable>
+            )}
           </View>
+
+          {/* Solicitudes de corrección enviadas (estado y comentario del gerente) */}
+          <EstadoCorrecciones correcciones={correcciones} />
 
           {/* Días en que el cliente está preasignado a un casero (Calendario) */}
           <ProximasVisitas clienteId={cliente.id} soyGerente={soyGerente} />
@@ -324,6 +349,18 @@ const HistorialCliente = () => {
                       </Pressable>
                     )}
 
+                    {/* Productos de la compra: el casero puede pedir corregir cada uno */}
+                    {!soyGerente && !d.anulada && d.items.map((it) => (
+                      <View key={it.id} style={styles.itemFila}>
+                        <Text style={styles.itemFilaText} numberOfLines={1}>{it.cantidad} × {it.productos?.nombre ?? 'Producto'} · {clp(Number(it.precio_final))}</Text>
+                        <Pressable hitSlop={8} style={styles.corregir}
+                          onPress={() => setObjetivo({ tipo: 'venta_item', clienteId: id, ventaId: v.id, itemId: it.id, productoId: it.producto_id, productoNombre: it.productos?.nombre ?? 'Producto', cantidad: it.cantidad, precio: Number(it.precio_final) })}>
+                          <Ionicons name="create-outline" size={14} color={Palette.navy} />
+                          <Text style={styles.corregirText}>Corregir</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+
                     <View style={styles.matriz}>
                       <View style={[styles.fila, styles.filaHead]}>
                         {COLUMNAS.map((c, k) => (
@@ -332,7 +369,8 @@ const HistorialCliente = () => {
                       </View>
                       {d.filas.length === 0 && <Text style={[styles.celda, { textAlign: 'center' }]}>Todavía no hay abonos.</Text>}
                       {d.filas.map((f, n) => (
-                        <View key={n} style={[styles.fila, styles.filaInterna]}>
+                        <Pressable key={n} style={[styles.fila, styles.filaInterna]} disabled={soyGerente}
+                          onPress={() => setObjetivo({ tipo: 'pago', clienteId: id, ventaId: v.id, pagoId: f.id, monto: f.monto, fecha: f.fecha })}>
                           <Text style={[styles.celda, { flex: COLUMNAS[0].f }]}>{f.fecha}</Text>
                           <Text style={[styles.celda, styles.celdaNum, { flex: COLUMNAS[1].f }]}>{f.abono}</Text>
                           <Text style={[styles.celda, styles.celdaNum, styles.celdaSaldo, { flex: COLUMNAS[2].f }]}>{f.saldo}</Text>
@@ -340,9 +378,10 @@ const HistorialCliente = () => {
                             {f.metodo ? <Ionicons name={f.metodo === 'transferencia' ? 'swap-horizontal' : 'cash-outline'} size={18} color={Palette.navy} /> : null}
                             {!!f.quien && <Text style={styles.quien} numberOfLines={1}>{f.quien}</Text>}
                           </View>
-                        </View>
+                        </Pressable>
                       ))}
                     </View>
+                    {!soyGerente && d.filas.length > 0 && <Text style={styles.leyendaText}>¿Te equivocaste en un monto? Toca el abono para pedir corrección.</Text>}
                     <View style={styles.leyenda}>
                       <Ionicons name="cash-outline" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Efectivo</Text>
                       <Ionicons name="swap-horizontal" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Transferencia</Text>
@@ -429,6 +468,8 @@ const HistorialCliente = () => {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      <PedirCorreccion objetivo={objetivo} onClose={() => setObjetivo(null)}
+        onEnviado={() => { setObjetivo(null); cargar(); Alert.alert('Solicitud enviada', 'El gerente la revisará. Verás aquí si la aprueba o la rechaza.') }} />
     </SafeAreaView>
   )
 }
@@ -441,6 +482,10 @@ const Dato = ({ icono, texto }: { icono: keyof typeof Ionicons.glyphMap; texto: 
 )
 
 const styles = StyleSheet.create({
+  itemFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  itemFilaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.text },
+  corregir: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  corregirText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
   card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 14, gap: 10 },

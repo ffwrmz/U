@@ -4,6 +4,7 @@ import { reiniciarDia } from '@/components/DepuracionDia'
 import MapaClientes from '@/components/MapaClientes'
 import { Punto, puntoDe, ubicacionesDeClientes } from '@/lib/mapa'
 import { cambiarEstadoJornada, ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
+import { contarPendientes, escucharCorrecciones } from '@/lib/correcciones'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -35,6 +36,16 @@ const HomeScreen = () => {
   const [misClientes, setMisClientes] = useState<string[]>([])
   const [vistaMapa, setVistaMapa] = useState<'todos' | 'asignados'>('todos')
   const soyGerente = esGerente(rolUsuario)
+  // Solicitudes de corrección pendientes (campana del gerente; en tiempo real y al volver a la pantalla)
+  const [correccionesPendientes, setCorreccionesPendientes] = useState(0)
+  const esDueno = rolUsuario === 'dueno'
+  useFocusEffect(useCallback(() => {
+    if (esDueno) contarPendientes().then(setCorreccionesPendientes)
+  }, [esDueno]))
+  useEffect(() => {
+    if (!esDueno) return
+    return escucharCorrecciones(() => { contarPendientes().then(setCorreccionesPendientes) })
+  }, [esDueno])
 
 
   useEffect(() => {
@@ -144,10 +155,30 @@ const HomeScreen = () => {
               <Text style={styles.heroHello}>Hola{nombreUsuario ? `, ${nombreUsuario}` : ''}</Text>
               <Text style={styles.heroBrand}>Santa Teresita</Text>
             </View>
-            <Pressable onPress={() => router.replace('/')} style={styles.iconButton}>
-              <Ionicons name="log-out-outline" size={22} color={Palette.onNavy} />
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {esDueno && (
+                <Pressable onPress={() => router.push('../solicitudes')} style={styles.iconButton} accessibilityLabel="Solicitudes de corrección">
+                  <Ionicons name={correccionesPendientes > 0 ? 'notifications' : 'notifications-outline'} size={22} color={Palette.onNavy} />
+                  {correccionesPendientes > 0 && (
+                    <View style={styles.badge}><Text style={styles.badgeText}>{correccionesPendientes > 99 ? '99+' : correccionesPendientes}</Text></View>
+                  )}
+                </Pressable>
+              )}
+              <Pressable onPress={() => router.replace('/')} style={styles.iconButton}>
+                <Ionicons name="log-out-outline" size={22} color={Palette.onNavy} />
+              </Pressable>
+            </View>
           </View>
+
+          {esDueno && correccionesPendientes > 0 && (
+            <Pressable style={({ pressed }) => [styles.bannerCorr, pressed && styles.cardPressed]} onPress={() => router.push('../solicitudes')}>
+              <Ionicons name="alert-circle" size={20} color={Palette.navy} />
+              <Text style={styles.bannerCorrText}>
+                Tienes {correccionesPendientes} {correccionesPendientes === 1 ? 'solicitud' : 'solicitudes'} de corrección
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={Palette.navy} />
+            </Pressable>
+          )}
 
           {soyGerente ? (
             <>
@@ -192,6 +223,12 @@ const HomeScreen = () => {
             <Text style={styles.summarySmall}>Por cobrar: {clp(totalPorCobrar)}</Text>
           </View>
           */}
+
+          {rolUsuario && !soyGerente && (
+            <View style={[styles.sectionRow, { marginBottom: 14 }]}>
+              <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
+            </View>
+          )}
 
           {/* Mi ruta de hoy: el casero siempre; el gerente solo si también tiene paradas asignadas */}
           {rolUsuario && (!soyGerente || miRuta.total > 0) && (
@@ -348,7 +385,7 @@ const HomeScreen = () => {
             )}
           </View>
 
-          {soyGerente && (() => {
+          {!!rolUsuario && (() => {
             // Dos vistas: todos los clientes, o solo los asignados hoy a mi ruta
             const enVista = vistaMapa === 'todos' ? clientesMapa : clientesMapa.filter((c) => misClientes.includes(c.id))
             const ubicaciones = ubicacionesDeClientes(enVista, deudas)
@@ -391,8 +428,8 @@ const HomeScreen = () => {
           {/* Lista de clientes: el gerente ve solo 5 (primero los que más deben) y un enlace a Clientes */}
           <>
           <View style={styles.sectionRow}>
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>{soyGerente ? 'Clientes con más deuda' : 'Clientes'}</Text>
-            {soyGerente && clientes.length > 5 && (
+            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Clientes con más deuda</Text>
+            {clientes.length > 5 && (
               <Pressable onPress={() => router.push('../clientes')} hitSlop={6}>
                 <Text style={styles.verTodos}>Ver todos los clientes</Text>
               </Pressable>
@@ -403,10 +440,7 @@ const HomeScreen = () => {
             <Text style={styles.emptyText}>Aún no hay clientes registrados.</Text>
           )}
 
-          {(soyGerente
-            ? [...clientes].sort((a, b) => (deudas[b.id] || 0) - (deudas[a.id] || 0) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 5)
-            : clientes
-          ).map((c, i) => {
+          {[...clientes].sort((a, b) => (deudas[b.id] || 0) - (deudas[a.id] || 0) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 5).map((c, i) => {
             const deuda = deudas[c.id] || 0
             return (
               <View key={c.id} style={styles.clienteRow}>
@@ -465,6 +499,10 @@ const styles = StyleSheet.create({
   },
   heroHello: { fontSize: 13, color: Palette.onNavyMuted },
   heroBrand: { fontSize: 22, fontWeight: '800', color: Palette.onNavy },
+  badge: { position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, backgroundColor: Palette.orange, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: Palette.navy },
+  badgeText: { color: Palette.onNavy, fontSize: 10, fontWeight: '800' },
+  bannerCorr: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.yellow, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14 },
+  bannerCorrText: { flex: 1, fontSize: 14, fontWeight: '800', color: Palette.navy },
   iconButton: {
     width: 40,
     height: 40,
