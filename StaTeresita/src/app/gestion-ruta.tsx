@@ -6,6 +6,7 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
+import RevisionClientes from '@/components/RevisionClientes'
 import { fechaISO, listarPreasignaciones, Preasignacion } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
@@ -132,10 +133,17 @@ const GestionRuta = () => {
     .filter((p) => p.vendedor_id === caseroId && sinAsignar.some((c) => c.id === p.cliente_id))
     .sort((a, b) => a.orden - b.orden)
   const nombreCaseroDe = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
+  // "Asignar preasignados": primero se revisan (se pueden quitar de esta asignación sin borrar la preasignación)
+  const [revisionPre, setRevisionPre] = useState<{ casero_id: string; nombre: string; ids: string[] } | null>(null)
   const asignarPreasignados = (caseroId: string) => {
-    if (!jornada) return
     const ids = prePendientes(caseroId).map((p) => p.cliente_id)
-    ejecutar(() => asignarParadas(jornada.id, caseroId, ids))
+    setRevisionPre({ casero_id: caseroId, nombre: nombreCaseroDe(caseroId), ids })
+  }
+  const confirmarPreasignados = () => {
+    const r = revisionPre
+    setRevisionPre(null)
+    if (!r || !jornada || r.ids.length === 0) return
+    ejecutar(() => asignarParadas(jornada.id, r.casero_id, r.ids))
   }
 
   // ---------- Asignar ----------
@@ -495,6 +503,15 @@ const GestionRuta = () => {
         paradas={mapaDe ? paradasDe(mapaDe.casero_id).map((p) => ({ cliente: p.cliente ?? clienteDe(p.cliente_id) ?? null, estado: p.estado })) : []}
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
+      />
+      <RevisionClientes
+        visible={!!revisionPre}
+        descripcion={revisionPre ? `Vas a asignar ${revisionPre.ids.length} ${revisionPre.ids.length === 1 ? 'cliente' : 'clientes'} a la ruta de hoy de ${revisionPre.nombre}` : ''}
+        clientes={(revisionPre?.ids ?? []).map((id) => clientes.find((c) => c.id === id)).filter(Boolean) as Cliente[]}
+        textoBoton="Asignar"
+        onQuitar={(id) => setRevisionPre((r) => (r ? { ...r, ids: r.ids.filter((x) => x !== id) } : r))}
+        onVolver={() => setRevisionPre(null)}
+        onConfirmar={confirmarPreasignados}
       />
     </SafeAreaView>
   )

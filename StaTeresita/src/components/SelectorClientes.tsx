@@ -1,4 +1,5 @@
 import DireccionCliente from '@/components/DireccionCliente'
+import { ContenidoRevision } from '@/components/RevisionClientes'
 import { Palette } from '@/constants/palette'
 import { ClienteRuta, comunaDe, sectorDe } from '@/lib/rutas'
 import { Ionicons } from '@expo/vector-icons'
@@ -33,6 +34,8 @@ interface Props {
   // Si viene, antes de confirmar se muestra la lista elegida para revisarla y quitar clientes;
   // el texto es el del botón final (ej. "Preasignar")
   revisarAntes?: string
+  // Texto de la revisión según la cantidad (ej. n => `Vas a preasignar ${n} clientes a Gonzalo el lunes`)
+  revisarDescripcion?: (n: number) => string
   onClose: () => void
   // Recibe los clientes elegidos en el orden en que se ven en la lista
   onConfirm: (ids: string[]) => void
@@ -40,7 +43,7 @@ interface Props {
 
 // Selector de clientes con búsqueda, filtros múltiples en cadena (comuna → sector → calle/pasaje),
 // orden y "Seleccionar todos". Se usa en el Calendario de preasignaciones.
-const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupados = false, revisarAntes, onClose, onConfirm }: Props) => {
+const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupados = false, revisarAntes, revisarDescripcion, onClose, onConfirm }: Props) => {
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
   // Filtros de selección múltiple (lista vacía = "Todos")
@@ -208,38 +211,15 @@ const SelectorClientes = ({ visible, titulo, clientes, ocupados = {}, moverOcupa
         {/* Revisión: la lista elegida, con opción de quitar, antes de confirmar */}
         {revisando && (
           <View style={styles.revision}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Revisa antes de confirmar ({revisando.length})</Text>
-              <Pressable onPress={() => setRevisando(null)} hitSlop={8}><Ionicons name="arrow-back" size={24} color={Palette.text} /></Pressable>
-            </View>
-            <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-              {revisando.length === 0 && <Text style={styles.sub}>No quedan clientes. Vuelve para elegir otros.</Text>}
-              {revisando.map((id) => {
-                const c = todos.find((x) => x.id === id)
-                if (!c) return null
-                return (
-                  <View key={id} style={styles.opcion}>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.nombre}>{c.nombre}</Text>
-                      <DireccionCliente c={c} compacta />
-                      {!!ocupados[id] && <Text style={styles.ocupado}>{ocupados[id]}</Text>}
-                    </View>
-                    <Pressable onPress={() => quitarDeRevision(id)} hitSlop={8} accessibilityLabel={`Quitar a ${c.nombre}`}>
-                      <Ionicons name="close-circle" size={24} color={Palette.orange} />
-                    </Pressable>
-                  </View>
-                )
-              })}
-            </ScrollView>
-            <View style={styles.revisionBotones}>
-              <Pressable style={[styles.boton, styles.botonSecundario]} onPress={() => setRevisando(null)}>
-                <Text style={[styles.botonText, { color: Palette.navy }]}>Volver</Text>
-              </Pressable>
-              <Pressable style={[styles.boton, { flex: 1 }, revisando.length === 0 && { opacity: 0.5 }]} disabled={revisando.length === 0}
-                onPress={() => onConfirm(revisando)}>
-                <Text style={styles.botonText}>{`${revisarAntes} ${revisando.length}`}</Text>
-              </Pressable>
-            </View>
+            <ContenidoRevision
+              descripcion={revisarDescripcion ? revisarDescripcion(revisando.length) : `${revisando.length} clientes elegidos`}
+              clientes={revisando.map((id) => todos.find((x) => x.id === id)).filter(Boolean) as ClienteRuta[]}
+              notas={ocupados}
+              textoBoton={revisarAntes ?? 'Confirmar'}
+              onQuitar={quitarDeRevision}
+              onVolver={() => setRevisando(null)}
+              onConfirmar={() => onConfirm(revisando)}
+            />
           </View>
         )}
 
@@ -299,8 +279,6 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
   linkNavy: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   revision: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.cream },
-  revisionBotones: { flexDirection: 'row', gap: 10, padding: 16 },
-  botonSecundario: { backgroundColor: Palette.navySoft, paddingHorizontal: 20 },
   capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },

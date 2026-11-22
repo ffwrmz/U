@@ -161,6 +161,7 @@ const Calendario = () => {
         ocupados={agregarA ? ocupadosPara(agregarA.id) : {}}
         moverOcupados
         revisarAntes="Preasignar"
+        revisarDescripcion={(n) => `Vas a preasignar ${n} ${n === 1 ? 'cliente' : 'clientes'} a ${agregarA?.nombre ?? ''} el ${fechaLarga(dia)}`}
         onClose={() => setAgregarA(null)}
         onConfirm={agregar}
       />
