@@ -6,8 +6,7 @@ import {
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
-import { omitirDia } from '@/lib/listasFijas'
-import { fechaISO, PreDia, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
+import { fechaISO, PreDia, preasignar, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -139,7 +138,8 @@ const GestionRuta = () => {
   const [preAbiertos, setPreAbiertos] = useState<string[]>([])
   const alternarPre = (id: string) => setPreAbiertos((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
   const prePara = (caseroId: string) => preHoy
-    .filter((p) => (!p.vendedor_id || p.vendedor_id === caseroId) && sinAsignar.some((c) => c.id === p.cliente_id))
+    .filter((p) => (!p.vendedor_id || p.vendedor_id === caseroId) && sinAsignar.some((c) => c.id === p.cliente_id)
+      && !(ocultosPre[caseroId] ?? []).includes(p.cliente_id))
     .sort((a, b) => a.orden - b.orden)
   const recargarPre = async () => {
     try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch {}
@@ -150,12 +150,11 @@ const GestionRuta = () => {
     if (!jornada || ids.length === 0) return
     ejecutar(async () => { await asignarParadas(jornada.id, caseroId, ids); await recargarPre() })
   }
-  // Quitar de la ruta de hoy: una preasignación hecha a mano se borra; uno de lista se saca solo de hoy (sigue en la lista)
-  const quitarPreDeHoy = (p: PreDia) => ejecutar(async () => {
-    if (p.origen === 'lista' && p.lista) await omitirDia(p.fecha, p.lista.id, p.cliente_id)
-    else if (p.id) await quitarPreasignacion(p.id)
-    await recargarPre()
-  })
+  // La X del desplegable solo oculta al cliente para ESE casero (no lo saca del día ni de la lista):
+  // así se puede "Agregar todos" a un casero sin algunos, y esos siguen disponibles para los demás.
+  const [ocultosPre, setOcultosPre] = useState<Record<string, string[]>>({})
+  const ocultarPre = (caseroId: string, clienteId: string) =>
+    setOcultosPre((o) => ({ ...o, [caseroId]: [...(o[caseroId] ?? []), clienteId] }))
 
   // ---------- Asignar ----------
   // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
@@ -192,19 +191,36 @@ const GestionRuta = () => {
   const quitar = (p: Parada) => ejecutar(() => quitarParada(p.id))
 
 
+  // Al finalizar el día: revisión de los clientes de las rutas de hoy que no se visitaron (pendientes o
+  // "No estaba") para agregarlos a la lista de mañana. Si no hay ninguno, se finaliza directo.
+  const [finalizar, setFinalizar] = useState<{ items: Parada[]; marcados: string[] } | null>(null)
+  const finalizarJornada = async (paraManana: string[]) => {
+    if (!jornada) return
+    setFinalizar(null)
+    await ejecutar(async () => {
+      if (paraManana.length > 0) {
+        const manana = new Date(); manana.setDate(manana.getDate() + 1)
+        const fecha = fechaISO(manana)
+        // No duplicar los que mañana ya están (por lista fija o a mano)
+        const yaManana = new Set((await resolverPreasignados(fecha, fecha)).map((p) => p.cliente_id))
+        await preasignar(fecha, null, paraManana.filter((id) => !yaManana.has(id)))
+      }
+      setJornada(await cambiarEstadoJornada(jornada.id, 'finalizada'))
+    })
+  }
+
   const cambiarEstado = (nuevo: EstadoJornada) => {
     if (!jornada) return
-    const iniciar = nuevo === 'en_curso'
-    Alert.alert(
-      iniciar ? 'Iniciar ruta' : 'Finalizar ruta',
-      iniciar ? 'Al iniciar se bloquean los clientes asignados y su orden.' : 'Se cerrará la jornada de hoy.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => ejecutar(async () => {
-          setJornada(await cambiarEstadoJornada(jornada.id, nuevo))
-        }) },
-      ]
-    )
+    if (nuevo === 'finalizada') {
+      const sinVisitar = paradas.filter((p) => p.estado !== 'visitado')
+      if (sinVisitar.length === 0) { finalizarJornada([]); return }
+      setFinalizar({ items: sinVisitar, marcados: sinVisitar.map((p) => p.cliente_id) })
+      return
+    }
+    Alert.alert('Iniciar ruta', 'Al iniciar se bloquean los clientes asignados y su orden.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Iniciar', onPress: () => ejecutar(async () => { setJornada(await cambiarEstadoJornada(jornada.id, nuevo)) }) },
+    ])
   }
 
   // ---------- Filtros y orden (para elegir clientes) ----------
@@ -360,7 +376,7 @@ const GestionRuta = () => {
                 </View>
 
                 {/* Preasignados para hoy (calendario), solo si hay */}
-                {editable && prePara(c.casero_id).length > 0 && (() => {
+                {editable && (prePara(c.casero_id).length > 0 || (ocultosPre[c.casero_id] ?? []).some((id) => sinAsignar.some((x) => x.id === id) && preHoy.some((p) => p.cliente_id === id))) && (() => {
                   const pres = prePara(c.casero_id)
                   const abierto = preAbiertos.includes(c.casero_id)
                   return (
@@ -374,6 +390,11 @@ const GestionRuta = () => {
                           <Text style={styles.preBotonText}>Agregar todos a {c.nombre}</Text>
                         </Pressable>
                       </Pressable>
+                      {(ocultosPre[c.casero_id] ?? []).filter((id) => sinAsignar.some((x) => x.id === id)).length > 0 && (
+                        <Pressable onPress={() => setOcultosPre((o) => ({ ...o, [c.casero_id]: [] }))} hitSlop={6}>
+                          <Text style={styles.mostrarOcultos}>Mostrar ocultos ({(ocultosPre[c.casero_id] ?? []).filter((id) => sinAsignar.some((x) => x.id === id)).length})</Text>
+                        </Pressable>
+                      )}
                       {abierto && pres.map((p) => {
                         const cp = p.cliente ?? clienteDe(p.cliente_id)
                         return (
@@ -386,7 +407,7 @@ const GestionRuta = () => {
                             <Pressable onPress={() => agregarPre(c.casero_id, [p.cliente_id])} disabled={ocupado} hitSlop={6} accessibilityLabel={`Agregar a la ruta de ${c.nombre}`}>
                               <Ionicons name="add-circle" size={24} color={Palette.navy} />
                             </Pressable>
-                            <Pressable onPress={() => quitarPreDeHoy(p)} disabled={ocupado} hitSlop={6} accessibilityLabel="Quitar de hoy">
+                            <Pressable onPress={() => ocultarPre(c.casero_id, p.cliente_id)} disabled={ocupado} hitSlop={6} accessibilityLabel={`No asignar a ${c.nombre}`}>
                               <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
                             </Pressable>
                           </View>
@@ -544,6 +565,49 @@ const GestionRuta = () => {
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
       />
+      {/* Finalizar el día: pasar a mañana los que no se visitaron */}
+      <Modal visible={!!finalizar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setFinalizar(null)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Finalizar ruta</Text>
+            <Pressable onPress={() => setFinalizar(null)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
+          </View>
+          {finalizar && (
+            <>
+              <Text style={[styles.sub, { padding: 16, paddingBottom: 4, fontWeight: '700', color: Palette.navy }]}>
+                ¿Agregar a la lista de mañana los clientes que no se visitaron o no estaban?
+              </Text>
+              <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+                {finalizar.items.map((p) => {
+                  const on = finalizar.marcados.includes(p.cliente_id)
+                  const cp = p.cliente ?? clienteDe(p.cliente_id)
+                  return (
+                    <Pressable key={p.id} style={styles.finalItem}
+                      onPress={() => setFinalizar((f) => f && ({ ...f, marcados: on ? f.marcados.filter((x) => x !== p.cliente_id) : [...f.marcados, p.cliente_id] }))}>
+                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? Palette.navy : Palette.textFaint} />
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
+                        <Text style={[styles.finalEstado, { color: p.estado === 'no_estaba' ? Palette.orange : Palette.navy }]}>
+                          {p.estado === 'no_estaba' ? 'No estaba' : 'No se visitó'} · {nombreCaseroDe(p.vendedor_id)}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+              <View style={{ padding: 16, gap: 10 }}>
+                <Pressable style={[styles.boton, finalizar.marcados.length === 0 && { opacity: 0.5 }]} disabled={finalizar.marcados.length === 0}
+                  onPress={() => finalizarJornada(finalizar.marcados)}>
+                  <Text style={styles.botonText}>{`Agregar ${finalizar.marcados.length} a mañana y finalizar`}</Text>
+                </Pressable>
+                <Pressable style={[styles.boton, { backgroundColor: Palette.grayPill }]} onPress={() => finalizarJornada([])}>
+                  <Text style={[styles.botonText, { color: Palette.text }]}>No, solo finalizar</Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -579,6 +643,9 @@ const styles = StyleSheet.create({
   acciones: { alignItems: 'center', gap: 2 },
   preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
+  mostrarOcultos: { fontSize: 12, fontWeight: '700', color: Palette.orange, paddingHorizontal: 4 },
+  finalItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 12, borderWidth: 1, borderColor: Palette.border, padding: 10 },
+  finalEstado: { fontSize: 12, fontWeight: '700' },
   preCaja: { backgroundColor: Palette.navySoft, borderRadius: 12, padding: 8, gap: 6 },
   preTitulo: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
