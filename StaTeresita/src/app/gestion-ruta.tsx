@@ -7,7 +7,7 @@ import {
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
 import RevisionClientes from '@/components/RevisionClientes'
-import { fechaISO, listarPreasignaciones, Preasignacion } from '@/lib/preasignaciones'
+import { fechaISO, PreDia, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -48,7 +48,7 @@ const GestionRuta = () => {
   const [vendedores, setVendedores] = useState<{ casero_id: string; nombre: string; furgon: string | null }[]>([])
 
   const [caseroModal, setCaseroModal] = useState<{ casero_id: string; nombre: string } | null>(null)
-  const [preHoy, setPreHoy] = useState<Preasignacion[]>([])
+  const [preHoy, setPreHoy] = useState<PreDia[]>([])
   const [seleccion, setSeleccion] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState('')
   // Filtros de selección múltiple (lista vacía = "Todos")
@@ -117,7 +117,7 @@ const GestionRuta = () => {
         // Gonzalo aparece primero; el resto por nombre
         setVendedores(ordenarCaseros(((vs as any[]) || []).map((v) => ({ casero_id: v.id, nombre: v.nombre, furgon: furgonDe(v.id) }))))
         // Preasignados para hoy (Calendario); si la tabla aún no existe, no hay
-        try { const hoy = fechaISO(new Date()); setPreHoy(await listarPreasignaciones(hoy, hoy)) } catch { setPreHoy([]) }
+        try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch { setPreHoy([]) }
         setCargando(false)
       }
       leer()
@@ -449,6 +449,7 @@ const GestionRuta = () => {
                         <Text style={styles.paradaNombre}>{c.nombre}</Text>
                         <DireccionCliente c={c} />
                         {otro && <Text style={styles.preOtro}>Preasignado a {nombreCaseroDe(otro)}</Text>}
+                        {preDe(c.id)?.lista && <Text style={styles.preLista}>Lista: {preDe(c.id)!.lista!.nombre}</Text>}
                       </View>
                     </Pressable>
                   )
@@ -509,6 +510,7 @@ const GestionRuta = () => {
         descripcion={revisionPre ? `Vas a asignar ${revisionPre.ids.length} ${revisionPre.ids.length === 1 ? 'cliente' : 'clientes'} a la ruta de hoy de ${revisionPre.nombre}` : ''}
         clientes={(revisionPre?.ids ?? []).map((id) => clientes.find((c) => c.id === id)).filter(Boolean) as Cliente[]}
         textoBoton="Asignar"
+        notas={Object.fromEntries(preHoy.filter((p) => p.lista).map((p) => [p.cliente_id, `Lista: ${p.lista!.nombre}`]))}
         onQuitar={(id) => setRevisionPre((r) => (r ? { ...r, ids: r.ids.filter((x) => x !== id) } : r))}
         onVolver={() => setRevisionPre(null)}
         onConfirmar={confirmarPreasignados}
@@ -550,6 +552,7 @@ const styles = StyleSheet.create({
   preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   preBotonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
+  preLista: { fontSize: 12, fontWeight: '700', color: Palette.navy },
   preOtro: { fontSize: 12, fontWeight: '700', color: Palette.amber },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },

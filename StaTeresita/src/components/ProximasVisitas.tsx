@@ -1,6 +1,7 @@
 import CalendarioMes from '@/components/CalendarioMes'
 import { Palette } from '@/constants/palette'
-import { fechaISO, fechaLarga, Preasignacion, preasignacionesDeCliente, programarVisita, quitarPreasignacion } from '@/lib/preasignaciones'
+import { omitirDia } from '@/lib/listasFijas'
+import { fechaISO, fechaLarga, PreDia, programarVisita, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
 import { ordenarCaseros } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -14,7 +15,7 @@ interface Casero { id: string; nombre: string }
 // El gerente puede programar una visita (fecha + casero) o quitarla. Tabla preasignaciones.
 const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGerente: boolean }) => {
   const hoy = fechaISO(new Date())
-  const [visitas, setVisitas] = useState<Preasignacion[]>([])
+  const [visitas, setVisitas] = useState<PreDia[]>([])
   const [caseros, setCaseros] = useState<Casero[]>([])
   const [cargando, setCargando] = useState(true)
   const [modal, setModal] = useState(false)
@@ -25,11 +26,13 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
 
   const cargar = useCallback(async () => {
     try {
-      const [v, pe] = await Promise.all([
-        preasignacionesDeCliente(clienteId, hoy),
+      // Próximos 60 días: preasignaciones del calendario y listas fijas que incluyen al cliente
+      const hasta = new Date(); hasta.setDate(hasta.getDate() + 60)
+      const [todas, pe] = await Promise.all([
+        resolverPreasignados(hoy, fechaISO(hasta)),
         supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'dueno']).neq('activo', false),
       ])
-      setVisitas(v)
+      setVisitas(todas.filter((x) => x.cliente_id === clienteId).sort((a, b) => a.fecha.localeCompare(b.fecha)))
       setCaseros(ordenarCaseros((pe.data as Casero[]) || []))
     } catch {
       setVisitas([]) // si la tabla aún no existe en Supabase, la sección queda vacía
@@ -58,8 +61,13 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
     }
   }
 
-  const quitar = async (id: string) => {
-    try { await quitarPreasignacion(id); cargar() } catch (e: any) { Alert.alert('Error', e.message ?? String(e)) }
+  // Quitar: una preasignación se borra; una visita de lista se omite solo ese día
+  const quitar = async (v: PreDia) => {
+    try {
+      if (v.origen === 'lista' && v.lista) await omitirDia(v.fecha, v.lista.id, v.cliente_id)
+      else if (v.id) await quitarPreasignacion(v.id)
+      cargar()
+    } catch (e: any) { Alert.alert('Error', e.message ?? String(e)) }
   }
 
   return (
@@ -76,14 +84,14 @@ const ProximasVisitas = ({ clienteId, soyGerente }: { clienteId: string; soyGere
       </View>
       {cargando ? <ActivityIndicator size="small" color={Palette.navy} />
         : visitas.length === 0 ? <Text style={styles.sub}>No tiene visitas programadas.</Text>
-        : visitas.map((v) => (
-          <View key={v.id} style={styles.fila}>
+        : visitas.slice(0, 12).map((v) => (
+          <View key={`${v.fecha}-${v.id ?? v.lista?.id}`} style={styles.fila}>
             <View style={{ flex: 1 }}>
               <Text style={styles.fecha}>{fechaLarga(v.fecha)}{v.fecha === hoy ? ' (hoy)' : ''}</Text>
-              <Text style={styles.sub}>Con {nombreDe(v.vendedor_id)}</Text>
+              <Text style={styles.sub}>Con {nombreDe(v.vendedor_id)}{v.lista ? ` · Lista: ${v.lista.nombre}` : ''}</Text>
             </View>
             {soyGerente && (
-              <Pressable onPress={() => quitar(v.id)} hitSlop={8} accessibilityLabel="Quitar visita">
+              <Pressable onPress={() => quitar(v)} hitSlop={8} accessibilityLabel="Quitar visita">
                 <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
               </Pressable>
             )}

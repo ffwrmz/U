@@ -4,7 +4,9 @@ import Header from '@/components/Header'
 import SelectorClientes from '@/components/SelectorClientes'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
-import { fechaISO, fechaLarga, listarPreasignaciones, Preasignacion, preasignar, programarVisita, quitarPreasignacion } from '@/lib/preasignaciones'
+import ListasFijas from '@/components/ListasFijas'
+import { omitirDia } from '@/lib/listasFijas'
+import { fechaISO, fechaLarga, PreDia, preasignar, programarVisita, quitarPreasignacion, resolverPreasignados } from '@/lib/preasignaciones'
 import { ClienteRuta, ordenarCaseros, SELECT_CLIENTE } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -26,7 +28,7 @@ const Calendario = () => {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [soyGerente, setSoyGerente] = useState(false)
-  const [pre, setPre] = useState<Preasignacion[]>([])
+  const [pre, setPre] = useState<PreDia[]>([])
   const [caseros, setCaseros] = useState<Casero[]>([])
   const [clientes, setClientes] = useState<ClienteRuta[]>([])
   const [agregarA, setAgregarA] = useState<Casero | null>(null)
@@ -44,7 +46,7 @@ const Calendario = () => {
         setSoyGerente(esGerente(perfil?.rol))
       }
       const [ps, pe, cs] = await Promise.all([
-        listarPreasignaciones(desde, hasta),
+        resolverPreasignados(desde, hasta), // explícitas + listas fijas
         supabase.from('perfiles').select('id, nombre').in('rol', ['vendedor', 'dueno']).neq('activo', false),
         supabase.from('clientes').select(SELECT_CLIENTE).order('nombre', { ascending: true }),
       ])
@@ -135,13 +137,20 @@ const Calendario = () => {
                   )}
                 </View>
                 {lista.map((p) => (
-                  <View key={p.id} style={styles.fila}>
+                  <View key={`${p.cliente_id}-${p.id ?? p.lista?.id}`} style={styles.fila}>
                     <Pressable style={{ flex: 1, gap: 2 }} onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: p.cliente_id } } as any)}>
                       <Text style={styles.nombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
                       {p.cliente && <DireccionCliente c={p.cliente} compacta />}
+                      {p.lista && (
+                        <View style={[styles.etiqueta, { backgroundColor: p.lista.color ?? Palette.navy }]}>
+                          <Text style={styles.etiquetaText}>{p.lista.nombre}</Text>
+                        </View>
+                      )}
                     </Pressable>
                     {!pasado && (
-                      <Pressable onPress={() => ejecutar(() => quitarPreasignacion(p.id))} disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar">
+                      // Quitar: una preasignación se borra; uno de lista se saca solo de este día
+                      <Pressable onPress={() => ejecutar(() => (p.origen === 'lista' && p.lista ? omitirDia(dia, p.lista.id, p.cliente_id) : quitarPreasignacion(p.id!)))}
+                        disabled={ocupado} hitSlop={8} accessibilityLabel="Quitar">
                         <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
                       </Pressable>
                     )}
@@ -151,6 +160,9 @@ const Calendario = () => {
             )
           })}
           {pasado && delDia.length === 0 && <Text style={styles.vacio}>Ese día no hubo clientes preasignados.</Text>}
+
+          {/* Listas fijas: Lunes a Viernes y etiquetas propias (quincena, día 20...) */}
+          <ListasFijas caseros={caseros} clientes={clientes} onCambio={cargar} />
         </ScrollView>
       )}
 
@@ -187,6 +199,8 @@ const styles = StyleSheet.create({
   botonText: { color: Palette.onNavy, fontSize: 13, fontWeight: '700' },
   fila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 12, padding: 10 },
   nombre: { fontSize: 14, fontWeight: '700', color: Palette.text },
+  etiqueta: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginTop: 2 },
+  etiquetaText: { fontSize: 11, fontWeight: '800', color: Palette.onNavy },
 })
 
 export default Calendario

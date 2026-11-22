@@ -1,5 +1,6 @@
 // Calendario de preasignaciones: clientes dejados para un casero en una fecha (hoy o días siguientes).
 // Tabla preasignaciones (ver supabase/migrations/20261122003500_preasignaciones.sql).
+import { itemsDeListas, ListaFija, listaCalza, listarListas, omitidasEntre } from '@/lib/listasFijas'
 import { ClienteRuta, SELECT_CLIENTE } from '@/lib/rutas'
 import { supabase } from '@/lib/supabase'
 
@@ -65,4 +66,48 @@ export const programarVisita = async (clienteId: string, fecha: string, vendedor
 export const quitarPreasignacion = async (id: string) => {
   const { error } = await supabase.from('preasignaciones').delete().eq('id', id)
   if (error) throw error
+}
+
+// ---------- Preasignados por fecha (explícitos + listas fijas) ----------
+
+export interface PreDia {
+  fecha: string
+  cliente_id: string
+  vendedor_id: string
+  orden: number
+  cliente: ClienteRuta | null
+  origen: 'manual' | 'lista'
+  id?: string // preasignación explícita
+  lista?: Pick<ListaFija, 'id' | 'nombre' | 'color'>
+}
+
+const fechasEntre = (desde: string, hasta: string) => {
+  const r: string[] = []
+  const [y, m, d] = desde.split('-').map(Number)
+  for (let f = new Date(y, m - 1, d); fechaISO(f) <= hasta; f.setDate(f.getDate() + 1)) r.push(fechaISO(f))
+  return r
+}
+
+// Resuelve los preasignados de cada día del rango: primero las preasignaciones explícitas; después los
+// clientes de las listas fijas cuya regla calza con el día (menos los omitidos ese día). Si un cliente está
+// en dos listas el mismo día, gana la de menor orden. Si las tablas de listas no existen, solo las explícitas.
+export const resolverPreasignados = async (desde: string, hasta: string): Promise<PreDia[]> => {
+  const manual = await listarPreasignaciones(desde, hasta)
+  let listas: ListaFija[] = []
+  let items: Awaited<ReturnType<typeof itemsDeListas>> = []
+  let omitidas: Awaited<ReturnType<typeof omitidasEntre>> = []
+  try { [listas, items, omitidas] = await Promise.all([listarListas(), itemsDeListas(), omitidasEntre(desde, hasta)]) } catch {}
+  const r: PreDia[] = manual.map((p) => ({ ...p, origen: 'manual' as const }))
+  for (const fecha of fechasEntre(desde, hasta)) {
+    const ocupados = new Set(manual.filter((p) => p.fecha === fecha).map((p) => p.cliente_id))
+    for (const l of listas.filter((x) => listaCalza(x, fecha))) {
+      for (const it of items.filter((x) => x.lista_id === l.id)) {
+        if (ocupados.has(it.cliente_id)) continue
+        if (omitidas.some((o) => o.fecha === fecha && o.lista_id === l.id && o.cliente_id === it.cliente_id)) continue
+        ocupados.add(it.cliente_id)
+        r.push({ fecha, cliente_id: it.cliente_id, vendedor_id: it.vendedor_id, orden: 1000 + it.orden, cliente: it.cliente, origen: 'lista', lista: { id: l.id, nombre: l.nombre, color: l.color } })
+      }
+    }
+  }
+  return r
 }
