@@ -54,7 +54,7 @@ const RegistrarCliente = () => {
       }
 
       // 3. Reutilizamos la dirección si ya existe (varios clientes pueden compartirla) o la creamos
-      const direccionId = await guardarDireccion(direccion)
+      const direccionId = await guardarDireccion(direccion, catalogo)
 
       // 4. Insertamos los datos en la tabla clientes
       const { error } = await supabase
@@ -124,7 +124,7 @@ const RegistrarCliente = () => {
         <TelefonoInput value={telefono} onChangeText={setTelefono} editable={!loading} style={{ marginBottom: 18 }} />
 
         <Text style={styles.seccion}>Dirección</Text>
-        <SelectorDireccion catalogo={catalogo} value={direccion} onChange={setDireccion} editable={!loading} />
+        <SelectorDireccion catalogo={catalogo} value={direccion} onChange={setDireccion} editable={!loading} conUbicacion />
 
         <Pressable 
           style={[styles.submitButton, loading && styles.submitButtonDisabled]} 

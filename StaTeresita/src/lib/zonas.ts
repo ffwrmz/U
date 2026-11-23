@@ -19,6 +19,10 @@ export interface DireccionForm {
   calle_id: string | null
   numero: string
   referencia: string
+  // Nombres escritos que aún no están en el catálogo (se crean solos al guardar)
+  nuevo?: { comuna?: string; sector?: string; calle?: string }
+  // Posición exacta del GPS ("Usar mi ubicación"): se guarda tal cual en la dirección
+  gps?: { latitud: number; longitud: number } | null
 }
 export const direccionVacia: DireccionForm = { comuna_id: null, sector_id: null, pasaje_id: null, calle_id: null, numero: '', referencia: '' }
 
@@ -47,24 +51,48 @@ export const cargarCatalogo = async (): Promise<{ catalogo: Catalogo; error: str
 // "Los Aromos 123, Pasaje 2, Sector Rari, Colbún"
 export const textoDireccion = (cat: Catalogo, d: DireccionForm) => {
   const nombre = <T extends { id: string; nombre: string }>(lista: T[], id: string | null) => lista.find((x) => x.id === id)?.nombre
-  const calle = nombre(cat.calles, d.calle_id)
+  const calle = nombre(cat.calles, d.calle_id) ?? d.nuevo?.calle
   return [
     calle ? [calle, d.numero.trim()].filter(Boolean).join(' ') : null,
     nombre(cat.pasajes, d.pasaje_id),
-    nombre(cat.sectores, d.sector_id),
-    nombre(cat.comunas, d.comuna_id),
+    nombre(cat.sectores, d.sector_id) ?? d.nuevo?.sector,
+    nombre(cat.comunas, d.comuna_id) ?? d.nuevo?.comuna,
   ].filter(Boolean).join(', ')
 }
 
 export const validarDireccion = (d: DireccionForm): string | null => {
-  if (!d.comuna_id) return 'Elige la comuna'
-  if (!d.sector_id) return 'Elige el sector'
-  if (!d.calle_id) return 'Elige el pasaje'
+  if (!d.comuna_id && !d.nuevo?.comuna?.trim()) return 'Elige la comuna'
+  if (!d.sector_id && !d.nuevo?.sector?.trim()) return 'Elige el sector'
+  if (!d.calle_id && !d.nuevo?.calle?.trim()) return 'Elige el pasaje'
   return null
 }
 
+const tieneNuevos = (d: DireccionForm) => !!(d.nuevo?.comuna || d.nuevo?.sector || d.nuevo?.calle)
+
+// Crea lo que falte (comuna, sector, pasaje) y la dirección con la función asegurar_direccion de Supabase
+const asegurarDireccion = async (cat: Catalogo, d: DireccionForm): Promise<string> => {
+  const nombre = <T extends { id: string; nombre: string }>(l: T[], id: string | null) => l.find((x) => x.id === id)?.nombre
+  const { data, error } = await supabase.rpc('asegurar_direccion', {
+    p_comuna: nombre(cat.comunas, d.comuna_id) ?? d.nuevo?.comuna?.trim() ?? '',
+    p_sector: nombre(cat.sectores, d.sector_id) ?? d.nuevo?.sector?.trim() ?? '',
+    p_pasaje: nombre(cat.calles, d.calle_id) ?? d.nuevo?.calle?.trim() ?? '',
+    p_numero: d.numero.trim() || null,
+    p_referencia: d.referencia.trim() || null,
+    p_lat: d.gps?.latitud ?? null,
+    p_lng: d.gps?.longitud ?? null,
+  })
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find/i.test(error.message)) {
+      throw new Error('Falta correr en Supabase el archivo 20261123140000_asegurar_direccion.sql para crear zonas nuevas desde aquí.')
+    }
+    throw error
+  }
+  return data as string
+}
+
 // Busca la misma dirección (calle + pasaje + número); si no existe la crea. Devuelve su id.
-export const guardarDireccion = async (d: DireccionForm): Promise<string> => {
+export const guardarDireccion = async (d: DireccionForm, cat?: Catalogo): Promise<string> => {
+  if (cat && (tieneNuevos(d) || d.gps)) return asegurarDireccion(cat, d)
   const numero = d.numero.trim() || null
   let q = supabase.from('direcciones').select('id').eq('calle_id', d.calle_id!)
   q = d.pasaje_id ? q.eq('pasaje_id', d.pasaje_id) : q.is('pasaje_id', null)

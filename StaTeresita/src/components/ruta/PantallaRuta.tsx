@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -63,6 +63,9 @@ export type ModoRuta = 'organizar' | 'recorrido'
 const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const organizando = modo === 'organizar'
   const router = useRouter()
+  // ?editar=1: reorganizar la ruta propia aunque ya esté en curso (las visitas ya marcadas quedan fijas arriba)
+  const { editar } = useLocalSearchParams<{ editar?: string }>()
+  const reorganizando = organizando && editar === '1'
   const { height } = useWindowDimensions()
   const lista = useRef<FlatList<Parada>>(null)
 
@@ -124,7 +127,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       // Estado de la ruta de cada casero (cada uno puede comenzar la suya)
       const est = j ? await listarEstadosCaseros(j.id) : {}
       const miEstado = estadoRutaDe(j, est, user.id)
-      if (organizando && miEstado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
+      if (organizando && miEstado === 'en_curso' && !reorganizando) { router.replace('/ruta-en-curso' as any); return }
       if (!organizando && miEstado === 'preparacion') { router.replace('/organizar-ruta' as any); return }
       setEstados(est)
       setJornada(j)
@@ -148,7 +151,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       setCargando(false)
       setRefrescando(false)
     }
-  }, [organizando, router])
+  }, [organizando, reorganizando, router])
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
 
@@ -274,7 +277,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const guardarOrden = async (ids: string[]) => {
     setTodas((l) => l.map((x) => (ids.includes(x.id) ? { ...x, orden: ids.indexOf(x.id) + 1 } : x)))
     setGuardandoOrden(true)
-    try { await reordenarParadas(ids) } catch (e: any) { Alert.alert('Error', e.message ?? String(e)); cargar() }
+    try { await reordenarParadas(ids, jornada?.id) } catch (e: any) { Alert.alert('Error', e.message ?? String(e)); cargar() }
     finally { setGuardandoOrden(false) }
   }
   const elegirOrden = (k: 'ruta' | 'sugerida') => {
@@ -292,11 +295,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   }
 
   // Organizar: subir / bajar paradas (antes de iniciar la ruta)
-  const puedeMover = organizando && estado === 'preparacion' && (esMia || soyGerente) && !enSugerida
+  const editable = !!estado && estado !== 'finalizada'
+  const puedeMover = organizando && editable && (esMia || soyGerente) && !enSugerida
   const mover = async (p: Parada, delta: -1 | 1) => {
     setMarcando(p.id)
     try {
-      await moverParada(enOrden, p.id, delta)
+      await moverParada(enOrden, p.id, delta, jornada?.id)
       const i = enOrden.findIndex((x) => x.id === p.id)
       const otro = enOrden[i + delta]
       if (otro) setTodas((l) => l.map((x) => (x.id === p.id ? { ...x, orden: i + delta + 1 } : x.id === otro.id ? { ...x, orden: i + 1 } : x)))
@@ -309,7 +313,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
 
   // Organizar: arrastrar un cliente con la manilla (debajo del número) para cambiar el orden.
   // Funciona también sobre la ruta sugerida; al soltar se guarda el orden y se vuelve a "Orden de la ruta".
-  const puedeArrastrar = organizando && estado === 'preparacion' && (esMia || soyGerente)
+  const puedeArrastrar = organizando && editable && (esMia || soyGerente)
   const soltar = async (desde: number, hacia: number) => {
     const nueva = [...paradas]
     const [movida] = nueva.splice(desde, 1)
@@ -320,7 +324,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     setOrdenVista('ruta')
     ordenAnterior.current = null // el orden arrastrado a mano pasa a ser el de la ruta
     try {
-      await reordenarParadas(ids)
+      await reordenarParadas(ids, jornada?.id)
     } catch (e: any) {
       Alert.alert('Error', e.message ?? String(e))
       cargar()
@@ -338,7 +342,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     const comenzar = async () => {
       setTerminando(true)
       try {
-        if (soyGerente) {
+        if (soyGerente && !esMia) {
           await cambiarEstadoJornada(jornada.id, 'en_curso')
           router.replace('/ruta-en-curso' as any)
         } else {
@@ -511,6 +515,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                 <Text style={styles.avanceSub}>Sin conexión al servicio de rutas: se muestra línea recta y distancias aproximadas.</Text>
               ) : null}
             </View>
+            {!organizando && esMia && estado === 'en_curso' && paradas.some((x) => x.estado === 'pendiente') && (
+              <Pressable style={styles.reorganizar} onPress={() => router.push('/organizar-ruta?editar=1' as any)}>
+                <MaterialIcons name="drag-indicator" size={16} color={Palette.navy} />
+                <Text style={styles.reorganizarText}>Cambiar el orden de las visitas que faltan</Text>
+              </Pressable>
+            )}
             {!organizando && <View style={styles.track}><View style={[styles.fill, { width: `${paradas.length ? (hechas / paradas.length) * 100 : 0}%` }]} /></View>}
           </View>
 
@@ -723,6 +733,14 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         </>
       )}
       {/* Organizar: botón principal para terminar y comenzar la ruta */}
+      {reorganizando && !cargando && estado === 'en_curso' && (
+        <View style={styles.pie}>
+          <Pressable style={styles.terminar} onPress={() => router.replace('/ruta-en-curso' as any)}>
+            <Ionicons name="checkmark" size={18} color={Palette.onNavy} />
+            <Text style={styles.terminarText}>Listo, volver a la ruta</Text>
+          </Pressable>
+        </View>
+      )}
       {organizando && !cargando && jornada && estado === 'preparacion' && (esMia || soyGerente) && enOrden.length > 0 && (
         <View style={styles.pie}>
           <Pressable style={[styles.terminar, terminando && { opacity: 0.6 }]} disabled={terminando} onPress={terminarOrganizacion}>
@@ -754,6 +772,8 @@ const styles = StyleSheet.create({
   fill: { height: 6, borderRadius: 3, backgroundColor: Palette.green },
   content: { padding: 12, gap: 10, paddingBottom: 40 },
   flechas: { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  reorganizar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  reorganizarText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   pie: { padding: 12, borderTopWidth: 1, borderTopColor: Palette.border, backgroundColor: Palette.cream },
   terminar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 15 },
   terminarText: { fontSize: 16, fontWeight: '800', color: Palette.onNavy },

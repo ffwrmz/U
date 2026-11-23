@@ -100,16 +100,14 @@ export const asignarParadas = async (jornadaId: string, vendedorId: string, clie
 }
 
 // Intercambia la parada con la anterior (-1) o la siguiente (+1) dentro de la lista del vendedor
-export const moverParada = async (lista: Parada[], paradaId: string, delta: -1 | 1) => {
+export const moverParada = async (lista: Parada[], paradaId: string, delta: -1 | 1, jornadaId?: string) => {
   const i = lista.findIndex((p) => p.id === paradaId)
   const j = i + delta
   if (i < 0 || j < 0 || j >= lista.length) return
-  // Se usan las posiciones (1, 2, 3...) para que el orden quede siempre limpio
-  const [a, b] = [lista[i], lista[j]]
-  const r1 = await supabase.from('ruta_paradas').update({ orden: j + 1 }).eq('id', a.id)
-  if (r1.error) throw r1.error
-  const r2 = await supabase.from('ruta_paradas').update({ orden: i + 1 }).eq('id', b.id)
-  if (r2.error) throw r2.error
+  // Se reescribe el orden completo (1, 2, 3...) para que quede siempre limpio
+  const ids = lista.map((p) => p.id)
+  ;[ids[i], ids[j]] = [ids[j], ids[i]]
+  await reordenarParadas(ids, jornadaId)
 }
 
 export const quitarParada = async (paradaId: string) => {
@@ -137,7 +135,13 @@ export const lineaDireccion = (c: ClienteRuta) => {
 export const lineaZona = (c: ClienteRuta) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
 
 // Guarda un nuevo orden para las paradas (orden = posición en la lista, desde 1)
-export const reordenarParadas = async (ids: string[]) => {
+export const reordenarParadas = async (ids: string[], jornadaId?: string) => {
+  // Con la función de Supabase el orden se guarda de una vez y el casero puede ordenar su propia ruta
+  if (jornadaId) {
+    const { error } = await supabase.rpc('reordenar_mi_ruta', { p_jornada: jornadaId, p_orden: ids })
+    if (!error) return
+    if (!(error.code === 'PGRST202' || /could not find|does not exist/i.test(error.message))) throw error
+  }
   for (let i = 0; i < ids.length; i++) {
     const { error } = await supabase.from('ruta_paradas').update({ orden: i + 1 }).eq('id', ids[i])
     if (error) throw error

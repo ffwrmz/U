@@ -211,7 +211,7 @@ const HistorialCliente = () => {
     setGuardandoDatos(true)
     try {
       // Reutiliza la dirección si ya existe (puede ser compartida con otros clientes) o la crea
-      const direccionId = await guardarDireccion(formDireccion)
+      const direccionId = await guardarDireccion(formDireccion, catalogo)
       const { data, error: e } = await supabase.from('clientes')
         .update({ nombre, rut, telefono, direccion_id: direccionId, direccion: textoDireccion(catalogo, formDireccion) })
         .eq('id', id).select('id, nombre, rut, telefono, direccion').single()
@@ -461,7 +461,7 @@ const HistorialCliente = () => {
             <Text style={styles.label}>Teléfono *</Text>
             <TelefonoInput value={form.telefono} onChangeText={(t) => setForm((f) => ({ ...f, telefono: t }))} editable={!guardandoDatos} />
             <Text style={[styles.seccion, { marginTop: 22 }]}>Dirección</Text>
-            <SelectorDireccion catalogo={catalogo} value={formDireccion} onChange={setFormDireccion} editable={!guardandoDatos} />
+            <SelectorDireccion catalogo={catalogo} value={formDireccion} onChange={setFormDireccion} editable={!guardandoDatos} conUbicacion />
             <Pressable style={[styles.botonGuardar, guardandoDatos && { opacity: 0.6 }]} onPress={guardarDatos} disabled={guardandoDatos}>
               <Text style={styles.botonPagarText}>{guardandoDatos ? 'Guardando...' : 'Guardar cambios'}</Text>
             </Pressable>
