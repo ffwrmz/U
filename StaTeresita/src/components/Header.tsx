@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Palette } from '@/constants/palette'
+import { supabase } from '@/lib/supabase'
 
 
 interface HeaderProps {
@@ -21,10 +22,9 @@ const Header = (props: HeaderProps) => {
     }
   }
 
-  const cerrarSesion = () => {
-
+  const cerrarSesion = async () => {
+    await supabase.auth.signOut()
     router.replace('/')
-    console.log('Cerrando sesión...')
   }
 
   return (

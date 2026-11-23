@@ -5,6 +5,7 @@ import MapaClientes from '@/components/MapaClientes'
 import { Punto, puntoDe, ubicacionesDeClientes } from '@/lib/mapa'
 import { cambiarEstadoJornada, ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { contarPendientes, escucharCorrecciones } from '@/lib/correcciones'
+import { contarNoLeidas, escucharNotificaciones } from '@/lib/notificaciones'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -46,6 +47,15 @@ const HomeScreen = () => {
     if (!esDueno) return
     return escucharCorrecciones(() => { contarPendientes().then(setCorreccionesPendientes) })
   }, [esDueno])
+  // Notificaciones sin leer (campana para todos)
+  const [noLeidas, setNoLeidas] = useState(0)
+  const [miId, setMiId] = useState<string | null>(null)
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setMiId(data.user?.id ?? null)) }, [])
+  useFocusEffect(useCallback(() => { contarNoLeidas().then(setNoLeidas) }, []))
+  useEffect(() => {
+    if (!miId) return
+    return escucharNotificaciones(miId, () => { contarNoLeidas().then(setNoLeidas) })
+  }, [miId])
 
 
   useEffect(() => {
@@ -156,15 +166,13 @@ const HomeScreen = () => {
               <Text style={styles.heroBrand}>Santa Teresita</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              {esDueno && (
-                <Pressable onPress={() => router.push('../solicitudes')} style={styles.iconButton} accessibilityLabel="Solicitudes de corrección">
-                  <Ionicons name={correccionesPendientes > 0 ? 'notifications' : 'notifications-outline'} size={22} color={Palette.onNavy} />
-                  {correccionesPendientes > 0 && (
-                    <View style={styles.badge}><Text style={styles.badgeText}>{correccionesPendientes > 99 ? '99+' : correccionesPendientes}</Text></View>
-                  )}
-                </Pressable>
-              )}
-              <Pressable onPress={() => router.replace('/')} style={styles.iconButton}>
+              <Pressable onPress={() => router.push('../notificaciones')} style={styles.iconButton} accessibilityLabel="Notificaciones">
+                <Ionicons name={noLeidas > 0 ? 'notifications' : 'notifications-outline'} size={22} color={Palette.onNavy} />
+                {noLeidas > 0 && (
+                  <View style={styles.badge}><Text style={styles.badgeText}>{noLeidas > 99 ? '99+' : noLeidas}</Text></View>
+                )}
+              </Pressable>
+              <Pressable onPress={async () => { await supabase.auth.signOut(); router.replace('/') }} style={styles.iconButton} accessibilityLabel="Cerrar sesión">
                 <Ionicons name="log-out-outline" size={22} color={Palette.onNavy} />
               </Pressable>
             </View>

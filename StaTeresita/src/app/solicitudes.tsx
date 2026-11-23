@@ -32,6 +32,7 @@ const Solicitudes = () => {
         setNombres(Object.fromEntries(((data as any[]) || []).map((p) => [p.id, p.nombre])))
       }
     } catch (e: any) {
+      console.warn('solicitudes:', e?.message ?? e)
       setError(e.message ?? String(e))
     } finally {
       setCargando(false)
@@ -66,7 +67,7 @@ const Solicitudes = () => {
       </View>
       {cargando ? <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} /> : (
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {error && <Text style={styles.vacio}>No se pudieron cargar: {error}{'\n'}¿Ya se corrió la migración de solicitudes de corrección?</Text>}
+          {error && <Text style={styles.vacio}>No se pudieron cargar las solicitudes. Revisa tu conexión e intenta de nuevo.</Text>}
           {!error && lista.length === 0 && (
             <Text style={styles.vacio}>{pestana === 'pendiente' ? 'No hay solicitudes pendientes.' : 'Aún no hay solicitudes resueltas.'}</Text>
           )}

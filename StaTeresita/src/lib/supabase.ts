@@ -12,7 +12,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,      // persiste la sesión en el dispositivo
     autoRefreshToken: true,     // renueva el token solo
-    persistSession: false,       // recuerda al usuario al reabrir
+    persistSession: true,        // la sesión queda abierta en el teléfono hasta que se cierre
     detectSessionInUrl: false,  // false en apps móviles
   },
 });

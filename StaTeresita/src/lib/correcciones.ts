@@ -1,4 +1,5 @@
 import { clp, telefonoLocal } from '@/lib/format'
+import { faltaTabla } from '@/lib/notificaciones'
 import { supabase } from '@/lib/supabase'
 
 // Solicitudes de corrección: el casero pide corregir un dato y el gerente la aprueba o rechaza
@@ -25,7 +26,16 @@ export interface Correccion {
   clientes?: { nombre: string } | null
 }
 
-const CAMPOS = 'id, tipo, pago_id, venta_id, venta_item_id, cliente_id, datos_anteriores, datos_nuevos, motivo, estado, solicitado_por, solicitado_en, revisado_en, comentario_gerente, clientes ( nombre )'
+const CAMPOS = 'id, tipo, pago_id, venta_id, venta_item_id, cliente_id, datos_anteriores, datos_nuevos, motivo, estado, solicitado_por, solicitado_en, revisado_en, comentario_gerente'
+
+// Nombre de cada cliente (aparte, para no depender de la relación en la consulta)
+const conClientes = async (l: Correccion[]): Promise<Correccion[]> => {
+  const ids = Array.from(new Set(l.map((c) => c.cliente_id).filter(Boolean))) as string[]
+  if (!ids.length) return l
+  const { data } = await supabase.from('clientes').select('id, nombre').in('id', ids)
+  const m = Object.fromEntries(((data as any[]) || []).map((c) => [c.id, c.nombre]))
+  return l.map((c) => ({ ...c, clientes: c.cliente_id && m[c.cliente_id] ? { nombre: m[c.cliente_id] } : null }))
+}
 
 export const crearCorreccion = async (s: {
   tipo: TipoCorreccion
@@ -48,7 +58,7 @@ export const correccionesDeCliente = async (clienteId: string): Promise<Correcci
   const { data, error } = await supabase.from('solicitudes_correccion').select(CAMPOS)
     .eq('cliente_id', clienteId).order('solicitado_en', { ascending: false }).limit(20)
   if (error) return [] // si la tabla aún no existe
-  return (data as any[]) as Correccion[]
+  return conClientes((data as any[]) as Correccion[])
 }
 
 export const listarCorrecciones = async (estado: 'pendiente' | 'resueltas'): Promise<Correccion[]> => {
@@ -56,8 +66,11 @@ export const listarCorrecciones = async (estado: 'pendiente' | 'resueltas'): Pro
   q = estado === 'pendiente' ? q.eq('estado', 'pendiente').order('solicitado_en', { ascending: true })
     : q.neq('estado', 'pendiente').order('revisado_en', { ascending: false }).limit(50)
   const { data, error } = await q
-  if (error) throw error
-  return (data as any[]) as Correccion[]
+  if (error) {
+    if (faltaTabla(error)) { console.warn('solicitudes_correccion:', error.message); return [] }
+    throw error
+  }
+  return conClientes((data as any[]) as Correccion[])
 }
 
 export const contarPendientes = async (): Promise<number> => {

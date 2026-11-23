@@ -1,7 +1,7 @@
 // app/index.tsx
 import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
+import { cuentaActiva } from '@/lib/notificaciones'
 import { Palette } from '@/constants/palette'
 
 
@@ -23,6 +24,28 @@ const Index = () => {
   const [password, setPassword] = useState('')
   const [mostrarPassword, setMostrarPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [revisando, setRevisando] = useState(true)
+
+  // Si ya hay una sesión guardada en el teléfono y la cuenta sigue activa, entra directo
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        const user = data.session?.user
+        if (user) {
+          const activa = await cuentaActiva(user.id)
+          if (activa === false) {
+            await supabase.auth.signOut()
+            Alert.alert('Cuenta desactivada', 'Tu cuenta fue desactivada. Habla con el gerente.')
+          } else {
+            router.replace('./(tabs)/home')
+            return
+          }
+        }
+      } catch { /* sin sesión: mostrar el login */ }
+      setRevisando(false)
+    })()
+  }, [router])
 
   const handleLogin = async () => {
 
@@ -59,6 +82,14 @@ const Index = () => {
 
     }
 
+  }
+
+  if (revisando) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.navy }]}>
+        <ActivityIndicator size="large" color={Palette.onNavy} />
+      </View>
+    )
   }
 
   return (
