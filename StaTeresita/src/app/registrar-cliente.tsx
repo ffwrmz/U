@@ -8,7 +8,9 @@ import { Palette } from '@/constants/palette'
 import { normalizarTelefono } from '@/lib/format'
 import TelefonoInput from '@/components/TelefonoInput'
 import SelectorDireccion from '@/components/SelectorDireccion'
-import { Catalogo, catalogoVacio, cargarCatalogo, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
+import { argsDireccion, Catalogo, catalogoVacio, cargarCatalogo, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
+import { uuid } from '@/lib/offline/cola'
+import { hayConexion } from '@/lib/offline/red'
 
 const RegistrarCliente = () => {
   const router = useRouter()
@@ -53,7 +55,26 @@ const RegistrarCliente = () => {
         return
       }
 
-      // 3. Reutilizamos la dirección si ya existe (varios clientes pueden compartirla) o la creamos
+      // 3. Cliente + dirección en una sola función (funciona sin conexión: se sube después, en orden).
+      //    El id del cliente se crea aquí, así una venta hecha sin señal a este cliente nuevo queda bien enlazada.
+      const r = await supabase.rpc('registrar_cliente', {
+        p_id: uuid(), p_nombre: nombre.trim(), p_rut: rut.trim(), p_telefono: telefonoLimpio,
+        p_texto_direccion: textoDireccion(catalogo, direccion), ...argsDireccion(catalogo, direccion),
+      })
+      if (!r.error) {
+        const dirId = (r.data as any)?.direccion_id as string | undefined
+        let ubicado = true
+        if (dirId && !direccion.gps) { try { ubicado = (await ubicarDireccion(dirId)) !== 'no' } catch { ubicado = false } }
+        Alert.alert('Éxito', !hayConexion() || !r.data
+          ? 'Cliente guardado sin conexión. Se subirá solo cuando vuelva la señal.'
+          : ubicado ? 'Cliente registrado correctamente' : 'Cliente registrado. No se pudo ubicar la casa en el mapa; se puede intentar después desde Zonas.')
+        router.back()
+        return
+      }
+      if (!(r.error.code === 'PGRST202' || /could not find/i.test(r.error.message))) throw r.error
+
+      // (Sin la función registrar_cliente en Supabase: forma antigua, solo con conexión)
+      // Reutilizamos la dirección si ya existe (varios clientes pueden compartirla) o la creamos
       const direccionId = await guardarDireccion(direccion, catalogo)
 
       // 4. Insertamos los datos en la tabla clientes

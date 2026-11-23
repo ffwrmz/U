@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 // Arma los puntos del mapa (UbicacionMapa) a partir de clientes o de las paradas de una ruta.
 import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { ClienteRuta, lineaDireccion, lineaZona } from '@/lib/rutas'
@@ -176,7 +177,41 @@ export interface RutaCalles {
 
 // Consulta a OSRM con tiempo máximo de 8 s y como mucho 1 consulta por segundo
 let ultimaOSRM = 0
+// Las respuestas se guardan en el teléfono: sin señal se usa la misma consulta guardada o, si cambió solo el
+// punto de partida, la última con las mismas paradas. Si no hay nada, la app muestra la línea recta.
+const CLAVE_OSRM = 'osrm:indice'
+const paradasDe = (url: string) => { const m = url.match(/\/driving\/([^?]+)/); return m ? m[1].split(';').slice(1).join(';') : url }
+const guardarOSRM = async (url: string, json: any) => {
+  try {
+    const idx: string[] = JSON.parse((await AsyncStorage.getItem(CLAVE_OSRM)) || '[]').filter((u: string) => u !== url)
+    idx.unshift(url)
+    const sobran = idx.splice(20)
+    await AsyncStorage.multiSet([['osrm:' + url, JSON.stringify(json)], [CLAVE_OSRM, JSON.stringify(idx)]])
+    if (sobran.length) await AsyncStorage.multiRemove(sobran.map((u) => 'osrm:' + u))
+  } catch {}
+}
+const leerOSRM = async (url: string) => {
+  try {
+    const exacta = await AsyncStorage.getItem('osrm:' + url)
+    if (exacta) return JSON.parse(exacta)
+    const tipo = url.split('/driving/')[0]
+    const idx: string[] = JSON.parse((await AsyncStorage.getItem(CLAVE_OSRM)) || '[]')
+    const parecida = idx.find((u) => u.split('/driving/')[0] === tipo && paradasDe(u) === paradasDe(url))
+    return parecida ? JSON.parse((await AsyncStorage.getItem('osrm:' + parecida)) || 'null') : null
+  } catch { return null }
+}
 const consultarOSRM = async (url: string) => {
+  try {
+    const json = await consultarOSRMRed(url)
+    guardarOSRM(url, json)
+    return json
+  } catch (e) {
+    const guardada = await leerOSRM(url)
+    if (guardada) return guardada
+    throw e
+  }
+}
+const consultarOSRMRed = async (url: string) => {
   const espera = ultimaOSRM + 1000 - Date.now()
   if (espera > 0) await new Promise((r) => setTimeout(r, espera))
   ultimaOSRM = Date.now()

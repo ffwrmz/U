@@ -1,3 +1,4 @@
+import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/demoJornada'
 import { reiniciarDia } from '@/components/DepuracionDia'
@@ -164,6 +165,7 @@ const HomeScreen = () => {
             <View>
               <Text style={styles.heroHello}>Hola{nombreUsuario ? `, ${nombreUsuario}` : ''}</Text>
               <Text style={styles.heroBrand}>Santa Teresita</Text>
+              <View style={{ alignItems: 'flex-start' }}><EstadoSync /></View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable onPress={() => router.push('../notificaciones')} style={styles.iconButton} accessibilityLabel="Notificaciones">

@@ -69,10 +69,10 @@ export const validarDireccion = (d: DireccionForm): string | null => {
 
 const tieneNuevos = (d: DireccionForm) => !!(d.nuevo?.comuna || d.nuevo?.sector || d.nuevo?.calle)
 
-// Crea lo que falte (comuna, sector, pasaje) y la dirección con la función asegurar_direccion de Supabase
-const asegurarDireccion = async (cat: Catalogo, d: DireccionForm): Promise<string> => {
+// Nombres de la dirección (del catálogo o escritos nuevos) para las funciones de Supabase
+export const argsDireccion = (cat: Catalogo, d: DireccionForm) => {
   const nombre = <T extends { id: string; nombre: string }>(l: T[], id: string | null) => l.find((x) => x.id === id)?.nombre
-  const { data, error } = await supabase.rpc('asegurar_direccion', {
+  return {
     p_comuna: nombre(cat.comunas, d.comuna_id) ?? d.nuevo?.comuna?.trim() ?? '',
     p_sector: nombre(cat.sectores, d.sector_id) ?? d.nuevo?.sector?.trim() ?? '',
     p_pasaje: nombre(cat.calles, d.calle_id) ?? d.nuevo?.calle?.trim() ?? '',
@@ -80,7 +80,12 @@ const asegurarDireccion = async (cat: Catalogo, d: DireccionForm): Promise<strin
     p_referencia: d.referencia.trim() || null,
     p_lat: d.gps?.latitud ?? null,
     p_lng: d.gps?.longitud ?? null,
-  })
+  }
+}
+
+// Crea lo que falte (comuna, sector, pasaje) y la dirección con la función asegurar_direccion de Supabase
+const asegurarDireccion = async (cat: Catalogo, d: DireccionForm): Promise<string> => {
+  const { data, error } = await supabase.rpc('asegurar_direccion', argsDireccion(cat, d))
   if (error) {
     if (error.code === 'PGRST202' || /could not find/i.test(error.message)) {
       throw new Error('Falta correr en Supabase el archivo 20261123140000_asegurar_direccion.sql para crear zonas nuevas desde aquí.')

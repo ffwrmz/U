@@ -1,5 +1,7 @@
 import { Palette } from '@/constants/palette'
 import { cuentaActiva, escucharNotificaciones, marcarLeida, Notificacion } from '@/lib/notificaciones'
+import { sincronizar } from '@/lib/offline/fetchOffline'
+import { alCambiarConexion, hayConexion, revisarConexion } from '@/lib/offline/red'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { usePathname, useRouter } from 'expo-router'
@@ -57,7 +59,7 @@ const SesionYAvisos = () => {
 
   // Cuenta desactivada → fuera
   const revisarCuenta = useCallback(async () => {
-    if (!usuarioId) return
+    if (!usuarioId || !hayConexion()) return // sin señal no se puede saber: no se saca a nadie
     const activa = await cuentaActiva(usuarioId)
     if (activa === false) {
       await supabase.auth.signOut()
@@ -73,6 +75,16 @@ const SesionYAvisos = () => {
     const intervalo = setInterval(revisarCuenta, 60_000)
     const app = AppState.addEventListener('change', (e) => { if (e === 'active') revisarCuenta() })
     return () => { clearInterval(intervalo); app.remove() }
+  }, [usuarioId, revisarCuenta])
+
+  // Subir lo que quedó guardado sin conexión: al volver la señal, al volver a la app y cada 30 s
+  useEffect(() => {
+    if (!usuarioId) return
+    sincronizar()
+    const a = alCambiarConexion((v) => { if (v) { sincronizar(); revisarCuenta() } })
+    const b = AppState.addEventListener('change', (e) => { if (e === 'active') sincronizar() })
+    const t = setInterval(async () => { if (await revisarConexion()) sincronizar() }, 30_000)
+    return () => { a(); b.remove(); clearInterval(t) }
   }, [usuarioId, revisarCuenta])
 
   // Notificaciones nuevas en tiempo real

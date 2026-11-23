@@ -1,3 +1,4 @@
+import { hayConexion } from '@/lib/offline/red'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
@@ -97,7 +98,7 @@ const RegistrarPago = () => {
 
       if (pagoError) throw pagoError
 
-      Alert.alert('Éxito', 'Pago registrado y saldo actualizado')
+      Alert.alert('Éxito', hayConexion() ? 'Pago registrado y saldo actualizado' : 'Pago guardado sin conexión. Se subirá solo cuando vuelva la señal.')
       router.back()
     } catch (error: any) {
       Alert.alert('Error al procesar pago', error.message)

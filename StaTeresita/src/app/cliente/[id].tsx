@@ -6,6 +6,7 @@ import SelectorDireccion from '@/components/SelectorDireccion'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
+import { hayConexion } from '@/lib/offline/red'
 import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -150,7 +151,7 @@ const HistorialCliente = () => {
         : { p_monto: abono, p_metodo: metodo, p_cliente_id: id })
       if (error) throw error
       setModalPago(false)
-      Alert.alert('Éxito', 'Pago registrado')
+      Alert.alert('Éxito', hayConexion() ? 'Pago registrado' : 'Pago guardado sin conexión. Se subirá solo cuando vuelva la señal.')
     } catch (e: any) {
       Alert.alert('Error al procesar pago', e.message)
     } finally {

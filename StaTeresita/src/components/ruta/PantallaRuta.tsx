@@ -7,6 +7,7 @@ import { esGerente } from '@/lib/demoJornada'
 import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, registrarPosicion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { hayConexion } from '@/lib/offline/red'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
@@ -202,6 +203,22 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   }, [organizando, reorganizando, router])
 
   useFocusEffect(useCallback(() => { cargar() }, [cargar]))
+
+  // Con señal, se dejan guardadas las cuotas de mis clientes de hoy (para verlas aunque se corte la señal)
+  const precargadas = useRef(new Set<string>())
+  useEffect(() => {
+    if (!hayConexion() || !yo) return
+    const ids = Array.from(new Set(todas.filter((p) => p.vendedor_id === yo).map((p) => p.cliente_id))).filter((c) => !precargadas.current.has(c))
+    let vigente = true
+    ;(async () => {
+      for (const c of ids) {
+        if (!vigente || !hayConexion()) return
+        precargadas.current.add(c)
+        try { await leerCuotas(c) } catch {}
+      }
+    })()
+    return () => { vigente = false }
+  }, [todas, yo])
 
   const enOrden = todas.filter((p) => p.vendedor_id === verDe).sort((a, b) => a.orden - b.orden)
   // Distancia aproximada (línea recta) desde mi ubicación a cada parada con coordenadas

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
 import { supabase } from '@/lib/supabase'
 
@@ -36,6 +37,7 @@ const Header = (props: HeaderProps) => {
       <View style={{ flex: 1, alignItems: 'center' }}>
         <Text style={styles.title}>{props.title}</Text>
         {!!props.subtitle && <Text style={styles.subtitle} numberOfLines={1}>{props.subtitle}</Text>}
+        <EstadoSync />
       </View>
 
       <Pressable onPress={cerrarSesion} style={styles.iconButton}>
