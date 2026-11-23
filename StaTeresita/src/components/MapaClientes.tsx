@@ -3,6 +3,7 @@
 // La versión web está en MapaClientes.web.tsx (Metro elige el archivo según la plataforma).
 
 import { Palette } from "@/constants/palette";
+import { Ionicons } from "@expo/vector-icons";
 import { clp } from "@/lib/format";
 import { useCallback, useEffect, useRef } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
@@ -26,8 +27,28 @@ export default function MapaClientes({
   onPressMapa,
   estilo,
   posicion,
+  seguirme,
+  navegacion,
+  onDejarDeSeguir,
+  norte,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
+  const siguiendo = !!seguirme && !!navegacion;
+
+  // Seguirme: la cámara va a mi posición, gira según mi rumbo, algo inclinada y a zoom de calle
+  useEffect(() => {
+    if (!siguiendo || !mapRef.current || !navegacion) return;
+    mapRef.current.animateCamera(
+      { center: { latitude: navegacion.latitud, longitude: navegacion.longitud }, heading: navegacion.rumbo ?? 0, pitch: 45, zoom: 17 },
+      { duration: 800 },
+    );
+  }, [siguiendo, navegacion]);
+
+  // Botón "Norte": vuelve a mirar al norte y sin inclinación
+  useEffect(() => {
+    if (!norte || !mapRef.current) return;
+    mapRef.current.animateCamera({ heading: 0, pitch: 0 }, { duration: 400 });
+  }, [norte]);
 
   // Encuadra el mapa para que se vean todos los puntos guardados
   const encuadrar = useCallback(() => {
@@ -53,13 +74,14 @@ export default function MapaClientes({
 
   // Los datos llegan después de que el mapa está listo: se encuadra al cambiar
   useEffect(() => {
-    encuadrar();
+    if (!siguiendo) encuadrar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encuadrar]);
 
   // Centra el mapa en el punto seleccionado
   useEffect(() => {
     const u = ubicaciones.find((x) => x.id === seleccionId);
-    if (!u || !mapRef.current) return;
+    if (!u || !mapRef.current || siguiendo) return;
     mapRef.current.animateToRegion(
       { latitude: u.latitud, longitude: u.longitud, latitudeDelta: 0.006, longitudeDelta: 0.006 },
       300,
@@ -77,8 +99,9 @@ export default function MapaClientes({
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       }}
-      onMapReady={encuadrar}
-      showsUserLocation={!!miUbicacion && !onPressMapa}
+      onMapReady={siguiendo ? undefined : encuadrar}
+      showsUserLocation={!!miUbicacion && !onPressMapa && !siguiendo}
+      onPanDrag={siguiendo ? () => onDejarDeSeguir?.() : undefined}
       onPress={onPressMapa ? (e) => {
         // Los toques sobre un marcador no cuentan como toque en el mapa
         if ((e.nativeEvent as any).action === "marker-press") return;
@@ -110,6 +133,15 @@ export default function MapaClientes({
       {onPressMapa && miUbicacion && (
         <Marker coordinate={{ latitude: miUbicacion.latitud, longitude: miUbicacion.longitud }} anchor={{ x: 0.5, y: 0.5 }} title="Tú estás aquí (simulado)">
           <View style={styles.yo} />
+        </Marker>
+      )}
+      {/* Seguirme: flecha que apunta hacia donde miro / avanzo (gira con el mapa) */}
+      {siguiendo && navegacion && (
+        <Marker coordinate={{ latitude: navegacion.latitud, longitude: navegacion.longitud }} anchor={{ x: 0.5, y: 0.5 }}
+          flat rotation={navegacion.rumbo ?? 0} zIndex={30} tracksViewChanges={false} title="Tú estás aquí">
+          <View style={styles.flecha}>
+            <Ionicons name="navigate" size={20} color="#FFFFFF" style={{ transform: [{ rotate: "-45deg" }] }} />
+          </View>
         </Marker>
       )}
       {ubicaciones.map((u) => {
@@ -159,5 +191,6 @@ const styles = StyleSheet.create({
   numeroText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
   punto: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
   yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF" },
+  flecha: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
   numeroSel: { minWidth: 38, height: 38, borderRadius: 19, borderWidth: 3, borderColor: Palette.orange },
 });

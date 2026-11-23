@@ -54,6 +54,10 @@ export default function MapaClientes({
   seleccionId,
   onPressUbicacion,
   miUbicacion,
+  seguirme,
+  navegacion,
+  onDejarDeSeguir,
+  norte,
   onPressMapa,
   estilo,
   posicion,
@@ -98,11 +102,23 @@ export default function MapaClientes({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seleccionId, listo]);
 
+  // Seguirme (en web normalmente sin brújula: solo centra)
+  const siguiendo = !!seguirme && !!navegacion;
+  useEffect(() => {
+    if (!siguiendo || !listo || !mapRef.current || !navegacion) return;
+    mapRef.current.easeTo({ center: [navegacion.longitud, navegacion.latitud], bearing: navegacion.rumbo ?? mapRef.current.getBearing(), pitch: 45, zoom: 17, duration: 800 });
+  }, [siguiendo, navegacion, listo]);
+  useEffect(() => {
+    if (!norte || !mapRef.current) return;
+    mapRef.current.easeTo({ bearing: 0, pitch: 0, duration: 400 });
+  }, [norte]);
+
   if (!enNavegador) return null;
 
   return (
     <Map
       ref={mapRef}
+      onDragStart={siguiendo ? () => onDejarDeSeguir?.() : undefined}
       mapLib={cargarMapLibre()}
       initialViewState={{
         longitude: CENTRO_INICIAL.longitud,

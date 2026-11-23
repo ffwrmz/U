@@ -33,6 +33,14 @@ export type MapaClientesProps = {
   posicion?: { latitud: number; longitud: number; titulo?: string } | null;
   /** Ubicación actual del usuario ("Tú estás aquí"). */
   miUbicacion?: { latitud: number; longitud: number } | null;
+  /** Modo "Seguirme": la cámara sigue la posición y gira según hacia dónde mira o avanza el teléfono. */
+  seguirme?: boolean;
+  /** Posición rápida para seguirme (cada ~2 s) y rumbo en grados (0 = norte). */
+  navegacion?: { latitud: number; longitud: number; rumbo: number | null } | null;
+  /** El usuario movió el mapa con el dedo: se deja de seguir. */
+  onDejarDeSeguir?: () => void;
+  /** Al cambiar este número el mapa vuelve a mirar al norte (sin inclinación). */
+  norte?: number;
 };
 
 // Centro de Molina: vista inicial cuando aún no hay puntos

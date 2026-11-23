@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
+import * as Location from 'expo-location'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
@@ -92,6 +93,53 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   const [camino, setCamino] = useState<RutaCalles | null>(null)
   const [sinServicio, setSinServicio] = useState(false)
   const [ordenAuto, setOrdenAuto] = useState<number[] | null>(null)
+
+  // Seguirme (Ruta en curso): el mapa sigue al teléfono y gira según hacia dónde mira o avanza
+  const [seguirme, setSeguirme] = useState(!organizando)
+  const [navegacion, setNavegacion] = useState<{ latitud: number; longitud: number; rumbo: number | null } | null>(null)
+  const [norte, setNorte] = useState(0)
+  useEffect(() => {
+    if (organizando || !seguirme || ubicacionEstado !== 'ok') return
+    let brujula: number | null = null
+    let rumboMov: number | null = null
+    let pos: { latitud: number; longitud: number } | null = null
+    let ultimoRumbo: number | null = null
+    const publicar = () => {
+      if (!pos) return
+      const r = rumboMov ?? brujula
+      // Cambios menores a 5° no se aplican (para que el mapa no tiemble)
+      const dif = r == null || ultimoRumbo == null ? 999 : Math.abs(((r - ultimoRumbo + 540) % 360) - 180)
+      if (dif >= 5) ultimoRumbo = r
+      setNavegacion({ ...pos, rumbo: ultimoRumbo })
+    }
+    const subs: { remove: () => void }[] = []
+    let activo = true
+    ;(async () => {
+      try {
+        const s1 = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 2500, distanceInterval: 5 },
+          (p) => {
+            pos = { latitud: p.coords.latitude, longitud: p.coords.longitude }
+            // En auto (más de ~8 km/h) manda el rumbo del movimiento; a pie, la brújula
+            const h = p.coords.heading
+            rumboMov = (p.coords.speed ?? 0) > 2.2 && h != null && h >= 0 ? h : null
+            publicar()
+          },
+        )
+        if (activo) subs.push(s1); else s1.remove()
+      } catch { /* sin GPS rápido: se queda el normal */ }
+      try {
+        const s2 = await Location.watchHeadingAsync((h) => {
+          const v = h.trueHeading != null && h.trueHeading >= 0 ? h.trueHeading : h.magHeading
+          if (v == null || v < 0) return
+          brujula = v
+          if (rumboMov == null) publicar()
+        })
+        if (activo) subs.push(s2); else s2.remove()
+      } catch { /* sin brújula (web): solo centra */ }
+    })()
+    return () => { activo = false; subs.forEach((x) => x.remove()) }
+  }, [organizando, seguirme, ubicacionEstado])
 
   const actualizarUbicacion = useCallback(async () => {
     setUbicacionEstado('buscando')
@@ -493,7 +541,22 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               seleccionId={paradaSel ? ubicacionDe(paradaSel) : null}
               onPressUbicacion={tocarPunto}
               miUbicacion={miUbicacion}
+              seguirme={!organizando && seguirme}
+              navegacion={navegacion}
+              onDejarDeSeguir={() => setSeguirme(false)}
+              norte={norte}
             />
+            {!organizando && ubicacionEstado === 'ok' && (
+              <View style={styles.botonesMapa}>
+                <Pressable style={[styles.botonMapa, seguirme && styles.botonMapaOn]} onPress={() => setSeguirme((v) => !v)}
+                  accessibilityLabel={seguirme ? 'Dejar de seguirme' : 'Seguirme en el mapa'}>
+                  <Ionicons name="navigate" size={20} color={seguirme ? Palette.onNavy : Palette.textFaint} />
+                </Pressable>
+                <Pressable style={styles.botonMapa} onPress={() => { setSeguirme(false); setNorte((n) => n + 1) }} accessibilityLabel="Mirar al norte">
+                  <Text style={styles.norteText}>N</Text>
+                </Pressable>
+              </View>
+            )}
             {paradas.length > 0 && ubicaciones.length === 0 && (
               <View style={styles.mapaAviso}><Text style={styles.mapaAvisoText}>Estas direcciones aún no tienen ubicación en el mapa.</Text></View>
             )}
@@ -772,6 +835,10 @@ const styles = StyleSheet.create({
   fill: { height: 6, borderRadius: 3, backgroundColor: Palette.green },
   content: { padding: 12, gap: 10, paddingBottom: 40 },
   flechas: { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  botonesMapa: { position: 'absolute', right: 10, top: 10, gap: 8 },
+  botonMapa: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Palette.border, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  botonMapaOn: { backgroundColor: Palette.navy, borderColor: Palette.navy },
+  norteText: { fontSize: 14, fontWeight: '900', color: Palette.navy },
   reorganizar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   reorganizarText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   pie: { padding: 12, borderTopWidth: 1, borderTopColor: Palette.border, backgroundColor: Palette.cream },
