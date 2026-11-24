@@ -14,6 +14,8 @@
 
 create schema if not exists pruebas;
 create table if not exists pruebas.datos_calendario (tabla text not null, id uuid not null, primary key (tabla, id));
+-- Solo la usa este archivo (desde el SQL Editor); con RLS y sin políticas, la app no puede leerla
+alter table pruebas.datos_calendario enable row level security;
 
 do $$
 declare
