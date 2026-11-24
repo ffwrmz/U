@@ -1,10 +1,10 @@
 import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { reiniciarDia } from '@/components/DepuracionDia'
 import MapaClientes from '@/components/MapaClientes'
-import { Punto, puntoDe, ubicacionesDeClientes } from '@/lib/mapa'
-import { cambiarEstadoJornada, ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
+import { ubicacionesDeClientes } from '@/lib/mapa'
+import { ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { contarPendientes, escucharCorrecciones } from '@/lib/correcciones'
 import { contarNoLeidas, escucharNotificaciones } from '@/lib/notificaciones'
 import { clp } from '@/lib/format'
@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 interface ClienteFila {
@@ -63,7 +63,7 @@ const HomeScreen = () => {
     const obtenerRol = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('perfiles')
           .select('rol, nombre')
           .eq('id', user.id)
@@ -132,30 +132,6 @@ const HomeScreen = () => {
     }, [])
   )
 
-  // Iniciar / finalizar la jornada de hoy (se guarda en Supabase)
-  const cambiarEstado = (nuevo: 'en_curso' | 'finalizada') => {
-    if (!jornada) return
-    const iniciar = nuevo === 'en_curso'
-    Alert.alert(
-      iniciar ? 'Iniciar ruta' : 'Finalizar ruta',
-      iniciar
-        ? 'Al iniciar se bloquean los clientes asignados y su orden. Las ventas y los abonos siguen funcionando.'
-        : 'Se cerrará la jornada de hoy.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: iniciar ? 'Iniciar' : 'Finalizar', onPress: () => {
-          cambiarEstadoJornada(jornada.id, nuevo)
-            .then(setJornada)
-            .catch((e) => Alert.alert('Error', e.message))
-        } },
-      ]
-    )
-  }
-
-  const conDeuda = clientes.filter((c) => (deudas[c.id] || 0) > 0).length
-  const totalPorCobrar = (Object.values(deudas) as number[]).reduce((s, n) => s + n, 0)
-  const progreso = clientes.length ? (clientes.length - conDeuda) / clientes.length : 0
-  
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
@@ -222,17 +198,7 @@ const HomeScreen = () => {
                 </Pressable>
               </View>
             </>
-          ) : null
-          /* Recuadro "Cobranza" del casero (comentado por ahora)
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Cobranza</Text>
-            <Text style={styles.summaryBig}>{conDeuda} de {clientes.length} clientes por visitar</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progreso * 100}%` }]} />
-            </View>
-            <Text style={styles.summarySmall}>Por cobrar: {clp(totalPorCobrar)}</Text>
-          </View>
-          */}
+          ) : null}
 
           {rolUsuario && !soyGerente && (
             <View style={[styles.sectionRow, { marginBottom: 14 }]}>
@@ -536,8 +502,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: 8, borderRadius: 4, backgroundColor: Palette.orange },
-  jornadaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 },
-  jornadaBtnText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
   heroJornadaTitle: { fontSize: 13, fontWeight: '700', color: Palette.onNavyMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
   gestionRow: { flexDirection: 'row', gap: 10 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -548,7 +512,6 @@ const styles = StyleSheet.create({
   gestionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   gestionTitulo: { fontSize: 16, fontWeight: '800', color: Palette.onNavy },
   gestionSub: { fontSize: 12, lineHeight: 16, color: Palette.onNavyMuted },
-  summarySmall: { fontSize: 13, color: Palette.onNavyMuted, marginTop: 10 },
   actionsContainer: {
     padding: 20,
     gap: 12,
@@ -563,7 +526,6 @@ const styles = StyleSheet.create({
   leyendaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   leyendaPunto: { width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
   leyendaText: { fontSize: 12, color: Palette.textMuted },
-  mapHint: { fontSize: 12, color: Palette.textMuted, marginBottom: 16 },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

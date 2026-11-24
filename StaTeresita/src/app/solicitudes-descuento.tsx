@@ -1,4 +1,4 @@
-// Este archivo no se encuentra implementado, puesto que es un complemento, se piensa trabajar para el siguiente sprint.
+// Solicitudes de descuento (gerente): los caseros piden un descuento mayor al permitido y el gerente lo aprueba o rechaza.
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { clp, fechaCorta } from '@/lib/format'

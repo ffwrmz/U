@@ -1,6 +1,6 @@
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas,
   comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
@@ -124,7 +124,6 @@ const GestionRuta = () => {
   )
 
   const paradasDe = (casero_id: string) => paradas.filter((p) => p.vendedor_id === casero_id).sort((a, b) => a.orden - b.orden)
-  const nombreCasero = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
   const sinAsignar = clientes.filter((c) => !paradas.some((p) => p.cliente_id === c.id))
   // Preasignados para hoy que todavía no están en la ruta de nadie
   const preDe = (clienteId: string) => preHoy.find((p) => p.cliente_id === clienteId)
@@ -638,8 +637,6 @@ const styles = StyleSheet.create({
   botonMapa: { width: 36, height: 36, borderRadius: 10, backgroundColor: Palette.navySoft, alignItems: 'center', justifyContent: 'center' },
   parada: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.cream, borderRadius: 14, padding: 10 },
   paradaNombre: { fontSize: 15, fontWeight: '700', color: Palette.text },
-  dirRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  dirText: { flex: 1, fontSize: 12, color: Palette.textMuted },
   acciones: { alignItems: 'center', gap: 2 },
   preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },

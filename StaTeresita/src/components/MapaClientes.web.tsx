@@ -58,7 +58,6 @@ export default function MapaClientes({
   navegacion,
   onDejarDeSeguir,
   norte,
-  onPressMapa,
   estilo,
   posicion,
 }: MapaClientesProps) {
@@ -128,7 +127,6 @@ export default function MapaClientes({
       style={{ width: "100%", height: "100%" }}
       mapStyle={ESTILO_OSM}
       onLoad={() => setListo(true)}
-      onClick={onPressMapa ? (e) => onPressMapa({ latitud: e.lngLat.lat, longitud: e.lngLat.lng }) : undefined}
     >
       <NavigationControl position="top-right" showCompass={false} />
 

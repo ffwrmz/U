@@ -1,6 +1,6 @@
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { supabase } from '@/lib/supabase'
 import { Catalogo, catalogoVacio, cargarCatalogo, Comuna, Sector, ubicarPendientes } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'

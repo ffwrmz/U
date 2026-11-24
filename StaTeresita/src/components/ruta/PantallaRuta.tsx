@@ -3,10 +3,10 @@ import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
 import type { UbicacionMapa } from '@/components/mapaClientes.types'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, registrarPosicion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
-import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, lineaDireccion, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { hayConexion } from '@/lib/offline/red'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
@@ -18,19 +18,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-const ESTADO = {
-  pendiente: { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted },
-  visitado: { texto: 'Estaba', fondo: Palette.greenSoft, color: Palette.green },
-  no_estaba: { texto: 'No estaba', fondo: Palette.amberSoft, color: Palette.orange },
-} as const
 // Colores de los números en el mapa según el estado de la visita
 const COLORES_MAPA = { pendiente: Palette.navy, visitado: Palette.green, no_estaba: Palette.orange }
 
-const hora = (iso: string | null) => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
-}
 
 interface PagoCuota { monto_abonado: number; metodo_pago: string | null; fecha_pago: string | null; creado_en: string | null }
 interface VentaCuota { id: string; monto_total: number; saldo_pendiente: number; descripcion: string | null; fecha_venta: string | null; pagos: PagoCuota[] }
@@ -667,7 +657,6 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
               // En la ruta sugerida se muestra el tramo desde la parada anterior; si no, la distancia desde mi ubicación
               const dist = p.estado !== 'pendiente' ? null : enSugerida ? (tramoDe[p.id] ?? null) : distancia(p)
               const auto = tramoAuto[p.id]
-              const e = ESTADO[p.estado] ?? ESTADO.pendiente
               const c = p.cliente
               const sel = p.id === seleccion
               const ocupado = marcando === p.id
@@ -868,7 +857,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 10 },
   cardCompacta: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 12, gap: 6 },
   numeroColCompacta: { gap: 4, alignSelf: 'center' },
-  numeroCompacto: { width: 26, height: 26, borderRadius: 13 },
   manillaCompacta: { width: 28, height: 28, borderRadius: 8 },
   iconosCompactos: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   iconoCompacto: { width: 30, height: 30, borderRadius: 15 },
@@ -888,27 +876,10 @@ const styles = StyleSheet.create({
   leyendaText: { fontSize: 12, fontWeight: '600', color: Palette.textMuted },
   cardSel: { borderColor: Palette.orange, borderWidth: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  numero: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  numeroText: { fontSize: 13, fontWeight: '800', color: Palette.onNavy },
   nombre: { fontSize: 16, fontWeight: '800', color: Palette.text },
   nombreFila: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dist: { fontSize: 12, fontWeight: '700', color: Palette.textMuted },
-  cerca: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, padding: 12, gap: 8 },
-  cercaTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  cercaTitulo: { flex: 1, fontSize: 14, fontWeight: '800', color: Palette.text },
-  link: { fontSize: 12, fontWeight: '800', color: Palette.orange },
-  cercaFila: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.navySoft, borderRadius: 10, padding: 8 },
-  cercaNumero: { width: 26, height: 26, borderRadius: 13, backgroundColor: Palette.navy, alignItems: 'center', justifyContent: 'center' },
-  cercaNumeroText: { fontSize: 12, fontWeight: '800', color: Palette.onNavy },
-  cercaNombre: { fontSize: 14, fontWeight: '800', color: Palette.text },
-  cercaDir: { fontSize: 12, color: Palette.textMuted },
-  cercaDist: { fontSize: 13, fontWeight: '800', color: Palette.navy },
-  cercaNota: { fontSize: 12, color: Palette.textMuted },
   ordenFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  usarOrden: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Palette.orange, borderRadius: 12, paddingVertical: 11 },
-  usarOrdenText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },
-  pill: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, marginTop: 2 },
-  pillText: { fontSize: 12, fontWeight: '800' },
   iconos: { gap: 8 },
   icono: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   botones: { flexDirection: 'row', gap: 8 },

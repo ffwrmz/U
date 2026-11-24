@@ -2,7 +2,7 @@ import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
 import { haceCuanto, listarPosiciones, metrosRecorridos, Posicion, puntoDe, Punto, RutaCalles, rutaPorCalles, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
 import {

@@ -32,7 +32,6 @@ export default function MapaClientes({
   seleccionId,
   onPressUbicacion,
   miUbicacion,
-  onPressMapa,
   estilo,
   posicion,
   seguirme,
@@ -111,13 +110,8 @@ export default function MapaClientes({
         longitudeDelta: 0.05,
       }}
       onMapReady={siguiendo ? undefined : encuadrar}
-      showsUserLocation={!!miUbicacion && !onPressMapa && !siguiendo}
+      showsUserLocation={!!miUbicacion && !siguiendo}
       onPanDrag={siguiendo ? () => onDejarDeSeguir?.() : undefined}
-      onPress={onPressMapa ? (e) => {
-        // Los toques sobre un marcador no cuentan como toque en el mapa
-        if ((e.nativeEvent as any).action === "marker-press") return;
-        onPressMapa({ latitud: e.nativeEvent.coordinate.latitude, longitud: e.nativeEvent.coordinate.longitude });
-      } : undefined}
       showsMyLocationButton={false}
       toolbarEnabled={false}
       onLongPress={(e) => {
@@ -146,12 +140,6 @@ export default function MapaClientes({
       )}
       {posicion && (
         <Marker coordinate={{ latitude: posicion.latitud, longitude: posicion.longitud }} anchor={{ x: 0.5, y: 0.5 }} title={posicion.titulo ?? "Posición"} zIndex={20}>
-          <View style={styles.yo} />
-        </Marker>
-      )}
-      {/* Ubicación simulada: el punto azul propio (el del GPS no sirve porque no es la posición real) */}
-      {onPressMapa && miUbicacion && (
-        <Marker coordinate={{ latitude: miUbicacion.latitud, longitude: miUbicacion.longitud }} anchor={{ x: 0.5, y: 0.5 }} title="Tú estás aquí (simulado)">
           <View style={styles.yo} />
         </Marker>
       )}

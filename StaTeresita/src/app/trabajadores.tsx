@@ -1,7 +1,7 @@
 import Header from '@/components/Header'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { normalizarTelefono } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'

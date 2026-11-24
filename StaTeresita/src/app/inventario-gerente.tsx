@@ -1,6 +1,6 @@
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'

@@ -7,7 +7,7 @@ import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
 import { hayConexion } from '@/lib/offline/red'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp as abrirWhatsAppCon, tieneWhatsapp } from '@/lib/whatsapp'
@@ -180,14 +180,6 @@ const HistorialCliente = () => {
     return { total, anulada, pagada, color, fondo, nombre, items, filas, pagado, pct }
   }
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
-
-  const estadoDe = (v: Venta) => {
-    if (v.estado_pago === 'anulada') return { texto: 'Anulada', fondo: Palette.grayPill, color: Palette.textMuted }
-    const saldo = Number(v.saldo_pendiente)
-    if (saldo <= 0) return { texto: 'Pagada', fondo: Palette.greenSoft, color: Palette.green }
-    if (saldo < Number(v.monto_total)) return { texto: 'Parcial', fondo: Palette.amberSoft, color: Palette.amber }
-    return { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted }
-  }
 
   const abrirEditar = async () => {
     if (!cliente) return
@@ -509,17 +501,10 @@ const styles = StyleSheet.create({
   itemNombre: { fontSize: 15, fontWeight: '800', color: Palette.text },
   estadoPill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
   estadoPillText: { fontSize: 12, fontWeight: '800' },
-  detalleTop: { borderRadius: 16, borderWidth: 2, padding: 14, gap: 8 },
-  detalleSaldo: { fontSize: 20, fontWeight: '800' },
-  banner: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8, gap: 6 },
-  bannerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  bannerProducto: { flex: 1, fontSize: 15, fontWeight: '800' },
-  bannerEstado: { fontSize: 13, fontWeight: '800' },
   barra: { height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
   barraRelleno: { height: 8, borderRadius: 4 },
   bannerSub: { fontSize: 12, color: Palette.textMuted },
   quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 60 },
-  botonPagar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 14 },
   botonGuardar: { backgroundColor: Palette.navy, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   botonPagarText: { color: Palette.onNavy, fontSize: 16, fontWeight: '800' },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
@@ -536,36 +521,18 @@ const styles = StyleSheet.create({
   metodoText: { fontSize: 14, fontWeight: '700', color: Palette.navy },
   nota: { fontSize: 12, color: Palette.textMuted, marginTop: 16 },
   leyenda: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  punto: { width: 10, height: 10, borderRadius: 5 },
   leyendaText: { fontSize: 12, color: Palette.textMuted, marginRight: 8 },
   matriz: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, overflow: 'hidden' },
   fila: { flexDirection: 'row' },
   filaHead: { backgroundColor: Palette.navySoft },
   filaInterna: { borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.07)' },
-  grupo: { borderTopWidth: 1, borderTopColor: Palette.border, borderLeftWidth: 5 },
   celda: { paddingHorizontal: 6, paddingVertical: 10, fontSize: 12, color: Palette.text, justifyContent: 'center' },
   celdaHead: { fontSize: 11, fontWeight: '800', color: Palette.navy, paddingVertical: 9 },
-  celdaProducto: { fontWeight: '800' },
   celdaNum: { textAlign: 'right' },
   celdaSaldo: { fontWeight: '800' },
   celdaUltima: { textAlign: 'center' },
-  cardHintMini: { fontSize: 12, color: Palette.textFaint, textAlign: 'center' },
-  compra: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, overflow: 'hidden' },
-  compraCabecera: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  compraTitulo: { fontSize: 15, fontWeight: '700', color: Palette.text },
   sub: { fontSize: 12, color: Palette.textMuted, marginTop: 2 },
   negrita: { fontWeight: '800', color: Palette.text },
-  pill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4 },
-  pillText: { fontSize: 11, fontWeight: '800' },
-  compraDetalle: { backgroundColor: Palette.cream, borderTopWidth: 1, borderTopColor: Palette.border, padding: 12, gap: 8 },
-  montos: { flexDirection: 'row', justifyContent: 'space-between' },
-  subSeccion: { fontSize: 12, fontWeight: '700', color: Palette.navy, marginTop: 4 },
-  abono: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 12, borderWidth: 1, borderColor: Palette.border, padding: 10 },
-  abonoNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Palette.navySoft, textAlign: 'center', lineHeight: 24, fontSize: 12, fontWeight: '800', color: Palette.navy, overflow: 'hidden' },
-  abonoFecha: { fontSize: 14, color: Palette.text },
-  abonoMonto: { fontSize: 15, fontWeight: '800', color: Palette.text },
-  verDetalle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8 },
-  verDetalleText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 20, fontSize: 14, paddingHorizontal: 20 },
   filaTelefono: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   botonWhatsApp: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.green },

@@ -34,9 +34,3 @@ export const Palette = {
   onNavyFill: 'rgba(255,255,255,0.14)',
 } as const
 
-export const Radius = {
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 28,
-} as const
