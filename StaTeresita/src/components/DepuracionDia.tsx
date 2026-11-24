@@ -13,8 +13,9 @@ export const reiniciarDia = (jornadaId: string | null | undefined, onHecho: () =
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Reiniciar el día', style: 'destructive', onPress: async () => {
         try {
-          await vaciarRuta(jornadaId)
+          // Primero vuelve la jornada a preparación (una ruta en curso no deja quitar clientes) y después borra
           await reiniciarJornada(jornadaId)
+          await vaciarRuta(jornadaId)
           Alert.alert('Listo', 'El día quedó como nuevo.')
         } catch (e: any) {
           Alert.alert('Error', e.message ?? String(e))
