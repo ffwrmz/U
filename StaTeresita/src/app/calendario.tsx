@@ -2,6 +2,7 @@ import CalendarioMes from '@/components/CalendarioMes'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import ListasFijas from '@/components/ListasFijas'
+import ResumenDia from '@/components/ResumenDia'
 import SelectorClientes from '@/components/SelectorClientes'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
@@ -16,6 +17,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 // Calendario (solo gerente): qué clientes hay que visitar cada día (hoy y los días siguientes).
+// Los días que ya pasaron (y hoy) muestran el resumen: trabajadores, sus clientes, cobros y ventas.
 // Se trabaja solo con clientes: el casero se elige recién al asignar la ruta del día (Asignar clientes).
 // Cada día junta las preasignaciones hechas a mano y los clientes de las listas fijas que calzan con ese día.
 const Calendario = () => {
@@ -30,6 +32,8 @@ const Calendario = () => {
   const [clientes, setClientes] = useState<ClienteRuta[]>([])
   const [agregando, setAgregando] = useState(false)
   const [ocupado, setOcupado] = useState(false)
+  // Días pasados con ruta: cuántos clientes tuvo cada jornada (para marcarlos en la grilla)
+  const [actividad, setActividad] = useState<Record<string, number>>({})
 
   // Rango del mes mostrado
   const desde = fechaISO(new Date(mes.getFullYear(), mes.getMonth(), 1))
@@ -47,6 +51,8 @@ const Calendario = () => {
         supabase.from('clientes').select(SELECT_CLIENTE).order('nombre', { ascending: true }),
       ])
       setPre(ps)
+      const js = await supabase.from('jornadas').select('fecha, ruta_paradas ( count )').gte('fecha', desde).lte('fecha', hasta)
+      setActividad(Object.fromEntries(((js.data as any[]) || []).map((j) => [j.fecha, Number(j.ruta_paradas?.[0]?.count ?? 0)]).filter(([, n]) => n > 0)))
       setClientes(((cs.data as any[]) || []) as ClienteRuta[])
       setError(cs.error?.message ?? null)
     } catch (e: any) {
@@ -68,7 +74,10 @@ const Calendario = () => {
   }
 
   const conteos: Record<string, number> = {}
-  pre.forEach((p) => { conteos[p.fecha] = (conteos[p.fecha] || 0) + 1 })
+  const colores: Record<string, string> = {}
+  pre.filter((p) => p.fecha >= hoy).forEach((p) => { conteos[p.fecha] = (conteos[p.fecha] || 0) + 1 })
+  // Días pasados: el número es de clientes que tuvo la ruta ese día (en verde)
+  Object.entries(actividad).forEach(([f, n]) => { if (f < hoy) { conteos[f] = n; colores[f] = Palette.green } })
   const delDia = pre.filter((p) => p.fecha === dia)
   const pasado = dia < hoy
 
@@ -91,15 +100,24 @@ const Calendario = () => {
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {error && <Text style={styles.error}>No se pudo cargar: {error}</Text>}
-          <CalendarioMes mes={mes} hoy={hoy} seleccion={dia} conteos={conteos}
+          <CalendarioMes mes={mes} hoy={hoy} seleccion={dia} conteos={conteos} colores={colores}
             onCambiarMes={(m) => setMes(m)} onElegir={setDia} />
 
+          {dia <= hoy && (
+            <>
+              <Text style={styles.diaTitulo}>{fechaLarga(dia)}{dia === hoy ? ' (hoy)' : ''}</Text>
+              <ResumenDia fecha={dia} />
+            </>
+          )}
+
+          {!pasado && (
+          <>
           <View style={styles.diaFila}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.diaTitulo}>{fechaLarga(dia)}{dia === hoy ? ' (hoy)' : ''}</Text>
+              <Text style={styles.diaTitulo}>{dia === hoy ? 'Programados para hoy' : fechaLarga(dia)}</Text>
               <Text style={styles.nota}>
                 {delDia.length} {delDia.length === 1 ? 'cliente' : 'clientes'}
-                {pasado ? ' · día pasado, solo para ver' : ' · el casero se elige en Asignar clientes'}
+                {' · el casero se elige en Asignar clientes'}
               </Text>
             </View>
             {ocupado && <ActivityIndicator size="small" color={Palette.navy} />}
@@ -130,6 +148,8 @@ const Calendario = () => {
               )}
             </View>
           ))}
+          </>
+          )}
 
           {/* Listas fijas: Lunes a Viernes y etiquetas propias (quincena, día 20...) */}
           <ListasFijas clientes={clientes} onCambio={cargar} />
