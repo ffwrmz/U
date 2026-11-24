@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "StaTeresita",
+    "name": "Santa Teresita",
     "slug": "StaTeresita",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,8 +10,9 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrar el mapa de clientes y guardar la ubicación de las casas."
-      }
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicación para mostrar el mapa de clientes, seguir la ruta y guardar la ubicación de las casas."
+      },
+      "bundleIdentifier": "cl.santateresita.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,8 +24,10 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ]
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ],
+      "package": "cl.santateresita.app"
     },
     "web": {
       "output": "static",
@@ -46,13 +49,20 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Necesitamos tu ubicación para mostrar el mapa de clientes y guardar la ubicación de las casas."
+          "locationWhenInUsePermission": "Necesitamos tu ubicación para mostrar el mapa de clientes, seguir la ruta y guardar la ubicación de las casas."
         }
       ],
       [
         "react-native-maps",
         {
           "flex": 1
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#262C60"
         }
       ]
     ],

@@ -166,7 +166,9 @@ export const rutaSugerida = (inicio: Punto, puntos: Punto[]) => {
 // ---------- Camino por calles (OSRM, servidor público de OpenStreetMap) ----------
 // Servidor de demostración gratuito y sin clave: sirve para probar, con límite de uso y sin garantías.
 // Si no responde, la app sigue mostrando la línea recta.
-const OSRM = 'https://router.project-osrm.org'
+// PENDIENTE para producción: el servidor público de OSRM es de demostración. Con un servidor propio o pagado,
+// poner su dirección en EXPO_PUBLIC_OSRM_URL (variable de EAS o .env).
+const OSRM = process.env.EXPO_PUBLIC_OSRM_URL || 'https://router.project-osrm.org'
 
 export interface RutaCalles {
   trazado: Punto[] // forma del camino para dibujar en el mapa

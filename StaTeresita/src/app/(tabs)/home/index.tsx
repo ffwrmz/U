@@ -15,6 +15,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+const MODO_PRUEBAS = __DEV__ || process.env.EXPO_PUBLIC_MODO_PRUEBAS === '1'
+
 interface ClienteFila {
   id: string
   nombre: string
@@ -288,7 +290,8 @@ const HomeScreen = () => {
               </Pressable>
             )}
 
-            {rolUsuario === 'dueno' && (
+            {/* Solo para pruebas: en la app instalada no aparece, salvo con EXPO_PUBLIC_MODO_PRUEBAS=1 */}
+            {MODO_PRUEBAS && rolUsuario === 'dueno' && (
               <Pressable
                 style={({ pressed }) => [styles.quick, { borderColor: Palette.orange, borderStyle: 'dashed', borderWidth: 1.5 }, pressed && styles.cardPressed]}
                 onPress={() => reiniciarDia(jornada?.id, () => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) })}
