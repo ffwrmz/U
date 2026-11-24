@@ -1,0 +1,202 @@
+// Rutas guardadas en Supabase: una jornada por día (tabla jornadas) y sus paradas (tabla ruta_paradas).
+// Ver supabase/migrations/20261109161000_rutas_jornadas.sql
+import { supabase } from '@/lib/supabase'
+
+export type EstadoJornada = 'preparacion' | 'en_curso' | 'finalizada'
+export type EstadoParada = 'pendiente' | 'visitado' | 'no_estaba'
+
+export interface Jornada { id: string; fecha: string; estado: EstadoJornada; iniciada_en: string | null; finalizada_en: string | null }
+
+// Dirección estructurada de un cliente (clientes.direccion_id → direcciones → sector/comuna, calle, pasaje)
+export interface Dir {
+  id?: string
+  latitud?: number | null
+  longitud?: number | null
+  numero: string | null
+  referencia: string | null
+  sector: { nombre: string; comuna: { nombre: string } | null } | null
+  calle: { nombre: string } | null
+  pasaje: { nombre: string } | null
+}
+export interface ClienteRuta { id: string; nombre: string; telefono?: string | null; direccion: string | null; dir: Dir | null }
+
+export interface Parada {
+  id: string
+  vendedor_id: string
+  cliente_id: string
+  orden: number
+  estado: EstadoParada
+  visitado_en: string | null
+  nota: string | null
+  cliente: ClienteRuta | null
+}
+
+// Columnas de un cliente con su dirección por zonas (para usar dentro de un select)
+export const SELECT_CLIENTE =
+  'id, nombre, telefono, direccion, dir:direcciones ( id, latitud, longitud, numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
+
+const SELECT_PARADA = `id, vendedor_id, cliente_id, orden, estado, visitado_en, nota, cliente:clientes ( ${SELECT_CLIENTE} )`
+const SELECT_JORNADA = 'id, fecha, estado, iniciada_en, finalizada_en'
+
+// Fecha de hoy en Chile (YYYY-MM-DD)
+export const hoyChile = () => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  } catch {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+}
+
+export const textoEstadoJornada = (estado?: EstadoJornada | null) =>
+  estado === 'en_curso' ? 'En curso' : estado === 'finalizada' ? 'Finalizada' : 'En preparación'
+
+// Jornada de hoy. Si no existe y `crear` es true (solo el dueño tiene permiso), la crea.
+export const obtenerOCrearJornadaHoy = async (crear: boolean): Promise<Jornada | null> => {
+  const fecha = hoyChile()
+  const { data, error } = await supabase.from('jornadas').select(SELECT_JORNADA).eq('fecha', fecha).maybeSingle()
+  if (error) throw error
+  if (data || !crear) return (data as Jornada) ?? null
+  const { data: nueva, error: e2 } = await supabase.from('jornadas').insert([{ fecha }]).select(SELECT_JORNADA).single()
+  if (e2) {
+    // Otra persona la creó al mismo tiempo: se vuelve a leer
+    if (e2.code === '23505') {
+      const { data: otra } = await supabase.from('jornadas').select(SELECT_JORNADA).eq('fecha', fecha).maybeSingle()
+      return (otra as Jornada) ?? null
+    }
+    throw e2
+  }
+  return nueva as Jornada
+}
+
+export const cambiarEstadoJornada = async (jornadaId: string, estado: EstadoJornada): Promise<Jornada> => {
+  const cambios: Record<string, unknown> = { estado }
+  if (estado === 'en_curso') cambios.iniciada_en = new Date().toISOString()
+  if (estado === 'finalizada') cambios.finalizada_en = new Date().toISOString()
+  const { data, error } = await supabase.from('jornadas').update(cambios).eq('id', jornadaId).select(SELECT_JORNADA).single()
+  if (error) throw error
+  return data as Jornada
+}
+
+// Paradas de una jornada (todas, o solo las de un vendedor), ordenadas
+export const listarParadas = async (jornadaId: string, vendedorId?: string): Promise<Parada[]> => {
+  let q = supabase.from('ruta_paradas').select(SELECT_PARADA).eq('jornada_id', jornadaId)
+  if (vendedorId) q = q.eq('vendedor_id', vendedorId)
+  const { data, error } = await q.order('orden', { ascending: true })
+  if (error) throw error
+  return ((data as any[]) || []) as Parada[]
+}
+
+// Agrega clientes al final de la ruta del vendedor. Si un cliente ya está en la jornada, se ignora.
+export const asignarParadas = async (jornadaId: string, vendedorId: string, clienteIds: string[]) => {
+  if (clienteIds.length === 0) return
+  const { data: ultima } = await supabase.from('ruta_paradas').select('orden')
+    .eq('jornada_id', jornadaId).eq('vendedor_id', vendedorId)
+    .order('orden', { ascending: false }).limit(1).maybeSingle()
+  const base = ultima?.orden ?? 0
+  const filas = clienteIds.map((cliente_id, i) => ({ jornada_id: jornadaId, vendedor_id: vendedorId, cliente_id, orden: base + i + 1 }))
+  const { error } = await supabase.from('ruta_paradas').upsert(filas, { onConflict: 'jornada_id,cliente_id', ignoreDuplicates: true })
+  if (error) throw error
+}
+
+// Intercambia la parada con la anterior (-1) o la siguiente (+1) dentro de la lista del vendedor
+export const moverParada = async (lista: Parada[], paradaId: string, delta: -1 | 1, jornadaId?: string) => {
+  const i = lista.findIndex((p) => p.id === paradaId)
+  const j = i + delta
+  if (i < 0 || j < 0 || j >= lista.length) return
+  // Se reescribe el orden completo (1, 2, 3...) para que quede siempre limpio
+  const ids = lista.map((p) => p.id)
+  ;[ids[i], ids[j]] = [ids[j], ids[i]]
+  await reordenarParadas(ids, jornadaId)
+}
+
+export const quitarParada = async (paradaId: string) => {
+  const { error } = await supabase.from('ruta_paradas').delete().eq('id', paradaId)
+  if (error) throw error
+}
+
+export const marcarParada = async (paradaId: string, estado: EstadoParada) => {
+  const { error } = await supabase.from('ruta_paradas')
+    .update({ estado, visitado_en: estado === 'pendiente' ? null : new Date().toISOString() })
+    .eq('id', paradaId)
+  if (error) throw error
+}
+
+// ---------- Textos de dirección ----------
+export const comunaDe = (c: ClienteRuta) => c.dir?.sector?.comuna?.nombre ?? ''
+export const sectorDe = (c: ClienteRuta) => c.dir?.sector?.nombre ?? ''
+// "Yerbas Buenas 123 (Pasaje Los Olivos)"; si no tiene dirección por zonas, el texto antiguo
+export const lineaDireccion = (c: ClienteRuta) => {
+  if (!c.dir) return c.direccion ?? ''
+  const calle = [c.dir.calle?.nombre, c.dir.numero].filter(Boolean).join(' ')
+  return c.dir.pasaje ? `${calle} (${c.dir.pasaje.nombre})` : calle
+}
+// "Sector · Comuna"
+export const lineaZona = (c: ClienteRuta) => [sectorDe(c), comunaDe(c)].filter(Boolean).join(' · ')
+
+// Guarda un nuevo orden para las paradas (orden = posición en la lista, desde 1)
+export const reordenarParadas = async (ids: string[], jornadaId?: string) => {
+  // Con la función de Supabase el orden se guarda de una vez y el casero puede ordenar su propia ruta
+  if (jornadaId) {
+    const { error } = await supabase.rpc('reordenar_mi_ruta', { p_jornada: jornadaId, p_orden: ids })
+    if (!error) return
+    if (!(error.code === 'PGRST202' || /could not find|does not exist/i.test(error.message))) throw error
+  }
+  for (let i = 0; i < ids.length; i++) {
+    const { error } = await supabase.from('ruta_paradas').update({ orden: i + 1 }).eq('id', ids[i])
+    if (error) throw error
+  }
+}
+
+// ---------- Depuración del día (solo para pruebas; el dueño tiene permiso) ----------
+// Vuelve la jornada a "En preparación" (como si no se hubiera iniciado)
+export const reiniciarJornada = async (jornadaId: string) => {
+  const { error } = await supabase.from('jornadas').update({ estado: 'preparacion', iniciada_en: null, finalizada_en: null }).eq('id', jornadaId)
+  if (error) throw error
+  // Rutas iniciadas por cada casero (si la tabla existe)
+  await supabase.from('jornada_vendedores').delete().eq('jornada_id', jornadaId)
+}
+// Quita todas las paradas de la jornada
+export const vaciarRuta = async (jornadaId: string) => {
+  const { error } = await supabase.from('ruta_paradas').delete().eq('jornada_id', jornadaId)
+  if (error) throw error
+}
+
+// Orden de los caseros en las listas: el que se llama Gonzalo primero (sin importar mayúsculas ni tildes),
+// después el resto por nombre
+const sinTildes = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+export const esCaseroPrincipal = (nombre: string) => sinTildes(nombre).includes('gonzalo')
+export const ordenarCaseros = <T extends { nombre: string }>(lista: T[]) =>
+  [...lista].sort((a, b) =>
+    Number(esCaseroPrincipal(b.nombre)) - Number(esCaseroPrincipal(a.nombre)) || a.nombre.localeCompare(b.nombre, 'es'))
+
+// ---------- Estado de la ruta de cada casero (tabla jornada_vendedores) ----------
+// La jornada del día la puede iniciar el gerente para todos, o cada casero la suya.
+// Ver supabase/migrations/20261115161000_jornada_vendedores.sql
+export type EstadosCaseros = Record<string, EstadoJornada>
+
+export const listarEstadosCaseros = async (jornadaId: string): Promise<EstadosCaseros> => {
+  const { data, error } = await supabase.from('jornada_vendedores').select('vendedor_id, estado').eq('jornada_id', jornadaId)
+  if (error) return {} // si la tabla aún no existe, solo cuenta el estado de la jornada
+  return Object.fromEntries(((data as any[]) || []).map((r) => [r.vendedor_id, r.estado as EstadoJornada]))
+}
+
+// Estado efectivo de la ruta de un casero: la jornada manda si está en curso o finalizada;
+// si la jornada sigue en preparación, cuenta el estado propio del casero.
+export const estadoRutaDe = (jornada: Jornada | null, estados: EstadosCaseros, vendedorId: string | null | undefined): EstadoJornada | undefined => {
+  if (!jornada) return undefined
+  if (jornada.estado !== 'preparacion') return jornada.estado
+  return (vendedorId && estados[vendedorId]) || 'preparacion'
+}
+
+// Quien hace la ruta la finaliza (función finalizar_mi_ruta): los clientes indicados pasan a mañana con él
+export const finalizarMiRuta = async (jornadaId: string, paraManana: string[]) => {
+  const { error } = await supabase.rpc('finalizar_mi_ruta', { p_jornada: jornadaId, p_pasar_a_manana: paraManana })
+  if (error) throw error
+}
+
+// El casero comienza su propia ruta (función iniciar_mi_ruta en Supabase)
+export const iniciarMiRuta = async (jornadaId: string) => {
+  const { error } = await supabase.rpc('iniciar_mi_ruta', { p_jornada: jornadaId })
+  if (error) throw error
+}

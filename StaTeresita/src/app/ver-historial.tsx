@@ -39,7 +39,7 @@ useEffect(() => {
         .order('fecha_venta', { ascending: false }); 
 
       if (error) {
-        console.log("Error de Supabase en historial:", error.message);
+        console.warn("Error de Supabase en historial:", error.message);
       } else {
         setVentas(data || []);
       }

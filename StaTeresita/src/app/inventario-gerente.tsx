@@ -1,6 +1,6 @@
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -131,7 +131,7 @@ const GestionInventario = () => {
       supabase.from('productos').select('id, nombre, marca, especificacion, precio_venta, controla_stock').eq('activo', true).order('nombre', { ascending: true }),
       traerUbicaciones(),
       supabase.from('inventario_stock').select('ubicacion_id, producto_id, cantidad'),
-      supabase.from('perfiles').select('id, nombre, rol').in('rol', ['dueno', 'vendedor']).order('nombre', { ascending: true }),
+      supabase.from('perfiles').select('id, nombre, rol').in('rol', ['dueno', 'vendedor']).neq('activo', false).order('nombre', { ascending: true }),
     ])
     const error = ps.error || us.error || st.error
     setErrorCarga(error ? error.message : null)

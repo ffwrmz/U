@@ -1,0 +1,242 @@
+// Mapa de clientes para web (MapLibre + mapa base de OpenStreetMap, sin API key).
+// Basado en el mapa de kaffee000 (github.com/kaffee000/StaTeresita).
+// react-native-maps no funciona en web; Metro usa este archivo en lugar de MapaClientes.tsx.
+
+import { Palette } from "@/constants/palette";
+import { clp } from "@/lib/format";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Map, {
+  Layer,
+  MapRef,
+  Marker,
+  NavigationControl,
+  Popup,
+  Source,
+  type StyleSpecification,
+} from "react-map-gl/maplibre";
+import {
+  CENTRO_INICIAL,
+  colorDe,
+  MapaClientesProps,
+  titulo,
+  UbicacionMapa,
+} from "./mapaClientes.types";
+
+const ESTILO_OSM: StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: "© OpenStreetMap contributors",
+    },
+  },
+  layers: [{ id: "osm", type: "raster", source: "osm" }],
+};
+
+// Carga MapLibre solo en el navegador (no en el render estático del servidor) y le
+// indica dónde está su worker, copiado a public/ por scripts/copiar-worker-maplibre.js.
+let mapLibPromise: Promise<typeof import("maplibre-gl")> | null = null;
+const cargarMapLibre = () =>
+  (mapLibPromise ??= import("maplibre-gl").then((m) => {
+    m.setWorkerUrl(new URL("/maplibre-gl-worker.mjs", window.location.origin).href);
+    return m;
+  }));
+
+export default function MapaClientes({
+  ubicaciones,
+  onPressCliente,
+  trazarRuta,
+  trazado,
+  seleccionId,
+  onPressUbicacion,
+  miUbicacion,
+  seguirme,
+  navegacion,
+  onDejarDeSeguir,
+  norte,
+  estilo,
+  posicion,
+}: MapaClientesProps) {
+  const mapRef = useRef<MapRef>(null);
+  const [listo, setListo] = useState(false);
+  // En el render estático del servidor no hay `window`: el mapa se monta solo en el navegador
+  const [enNavegador, setEnNavegador] = useState(false);
+  useEffect(() => setEnNavegador(true), []);
+  const [seleccion, setSeleccion] = useState<UbicacionMapa | null>(null);
+
+  // Encuadra el mapa para que se vean todos los puntos guardados
+  const encuadrar = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !ubicaciones.length) return;
+    if (ubicaciones.length === 1) {
+      const u = ubicaciones[0];
+      map.flyTo({ center: [u.longitud, u.latitud], zoom: 16, duration: 400 });
+      return;
+    }
+    const lngs = ubicaciones.map((u) => u.longitud);
+    const lats = ubicaciones.map((u) => u.latitud);
+    map.fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      // Más margen arriba: el pin se dibuja hacia arriba desde la coordenada
+      { padding: { top: 60, bottom: 30, left: 40, right: 40 }, maxZoom: 16, duration: 400 },
+    );
+  }, [ubicaciones]);
+
+  useEffect(() => {
+    if (listo) encuadrar();
+  }, [listo, encuadrar]);
+
+  // Centra el mapa en el punto seleccionado
+  useEffect(() => {
+    const u = ubicaciones.find((x) => x.id === seleccionId);
+    if (!u || !listo || !mapRef.current) return;
+    mapRef.current.flyTo({ center: [u.longitud, u.latitud], zoom: 16, duration: 300 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seleccionId, listo]);
+
+  // Seguirme (en web normalmente sin brújula: solo centra)
+  const siguiendo = !!seguirme && !!navegacion;
+  useEffect(() => {
+    if (!siguiendo || !listo || !mapRef.current || !navegacion) return;
+    mapRef.current.easeTo({ center: [navegacion.longitud, navegacion.latitud], bearing: navegacion.rumbo ?? mapRef.current.getBearing(), pitch: 45, zoom: 17, duration: 800 });
+  }, [siguiendo, navegacion, listo]);
+  useEffect(() => {
+    if (!norte || !mapRef.current) return;
+    mapRef.current.easeTo({ bearing: 0, pitch: 0, duration: 400 });
+  }, [norte]);
+
+  if (!enNavegador) return null;
+
+  return (
+    <Map
+      ref={mapRef}
+      onDragStart={siguiendo ? () => onDejarDeSeguir?.() : undefined}
+      mapLib={cargarMapLibre()}
+      initialViewState={{
+        longitude: CENTRO_INICIAL.longitud,
+        latitude: CENTRO_INICIAL.latitud,
+        zoom: 12,
+      }}
+      style={{ width: "100%", height: "100%" }}
+      mapStyle={ESTILO_OSM}
+      onLoad={() => setListo(true)}
+    >
+      <NavigationControl position="top-right" showCompass={false} />
+
+      {trazarRuta && ((trazado?.length ?? 0) > 1 || ubicaciones.length > 1) && (
+        <Source
+          id="ruta"
+          type="geojson"
+          data={{
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: (trazado && trazado.length > 1 ? trazado : ubicaciones).map((u) => [u.longitud, u.latitud]),
+            },
+          }}
+        >
+          <Layer id="ruta-linea" type="line" paint={{ "line-color": Palette.navy, "line-width": 3 }} />
+        </Source>
+      )}
+
+      {ubicaciones.map((u) => (
+        <Marker
+          key={u.id}
+          longitude={u.longitud}
+          latitude={u.latitud}
+          anchor={u.etiqueta || estilo === "punto" ? "center" : "bottom"}
+          color={u.etiqueta || estilo === "punto" ? undefined : colorDe(u, Palette.green, Palette.amber)}
+          onClick={(e) => {
+            e.originalEvent.stopPropagation();
+            if (onPressUbicacion) onPressUbicacion(u);
+            else setSeleccion(u);
+          }}
+        >
+          {estilo === "punto" && !u.etiqueta ? (
+            <div
+              style={{
+                width: 16, height: 16, borderRadius: 8, boxSizing: "border-box", cursor: "pointer",
+                background: colorDe(u, Palette.green, Palette.yellow),
+                border: `2px solid ${u.clientes.some((c) => c.deuda > 0) ? Palette.yellowBorder : "#fff"}`,
+              }}
+            />
+          ) : u.etiqueta ? (
+            <div
+              style={{
+                minWidth: u.id === seleccionId ? 38 : 28, height: u.id === seleccionId ? 38 : 28,
+                borderRadius: 19, padding: "0 6px", boxSizing: "border-box",
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                background: colorDe(u, Palette.green, Palette.amber),
+                border: u.id === seleccionId ? `3px solid ${Palette.orange}` : "2px solid #fff",
+                color: "#fff", fontWeight: 800, fontSize: 13, fontFamily: "system-ui, sans-serif",
+              }}
+            >
+              {u.etiqueta}
+            </div>
+          ) : undefined}
+        </Marker>
+      ))}
+
+      {listo && posicion && (
+        <Marker longitude={posicion.longitud} latitude={posicion.latitud} anchor="center">
+          <div title={posicion.titulo ?? "Posición"} style={{ width: 16, height: 16, borderRadius: 8, background: "#2F80ED", border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(47,128,237,0.25)" }} />
+        </Marker>
+      )}
+
+      {listo && miUbicacion && (
+        <Marker longitude={miUbicacion.longitud} latitude={miUbicacion.latitud} anchor="center">
+          <div
+            title="Tú estás aquí"
+            style={{
+              width: 16, height: 16, borderRadius: 8, background: "#2F80ED",
+              border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(47,128,237,0.25)",
+            }}
+          />
+        </Marker>
+      )}
+
+      {seleccion && (
+        <Popup
+          longitude={seleccion.longitud}
+          latitude={seleccion.latitud}
+          offset={seleccion.etiqueta || estilo === "punto" ? 12 : 36}
+          maxWidth="260px"
+          onClose={() => setSeleccion(null)}
+          closeOnClick={false}
+        >
+          <div style={{ fontFamily: "system-ui, sans-serif", color: Palette.text, minWidth: 160 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>{titulo(seleccion)}</div>
+            <div style={{ fontSize: 12, color: Palette.textMuted, marginBottom: 6 }}>
+              {seleccion.direccion}
+            </div>
+            {seleccion.clientes.map((c) => (
+              <div
+                key={c.id}
+                onClick={onPressCliente ? () => onPressCliente(c.id) : undefined}
+                style={{
+                  fontSize: 13,
+                  padding: "3px 0",
+                  cursor: onPressCliente ? "pointer" : "default",
+                  color: Palette.navy,
+                }}
+              >
+                {seleccion.clientes.length > 1 ? `${c.nombre} · ` : ""}
+                <span style={{ color: c.deuda > 0 ? Palette.amber : Palette.green }}>
+                  {c.deuda > 0 ? `Debe ${clp(c.deuda)}` : "Al día"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Popup>
+      )}
+    </Map>
+  );
+}

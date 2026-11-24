@@ -24,6 +24,8 @@ export const Palette = {
   greenSoft: '#DDF3E6',
   amber: '#9A6200',
   amberSoft: '#FDF0D2',
+  yellow: '#F5C518', // puntos de clientes con deuda en el mapa (con borde oscuro)
+  yellowBorder: '#7A5A00',
   grayPill: '#ECEBE5',
 
   // Sobre fondo azul marino
@@ -32,9 +34,3 @@ export const Palette = {
   onNavyFill: 'rgba(255,255,255,0.14)',
 } as const
 
-export const Radius = {
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 28,
-} as const

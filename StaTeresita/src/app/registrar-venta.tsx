@@ -1,6 +1,7 @@
+import { hayConexion } from '@/lib/offline/red'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
-import { esGerente } from '@/lib/demoJornada'
+import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -217,10 +218,13 @@ const RegistrarVenta = () => {
       p_pie: modo === 'credito' ? pieNum : 0,
       p_metodo: metodo,
       p_nota: nota.trim() || null,
+      // Solo para la app sin conexión (no se envían a Supabase): total y texto para mostrarla mientras se sube
+      _total: total,
+      _descripcion: `${lineas.map((l) => `${l.cantidad} × ${l.producto.nombre}`).join(', ')} · ${cliente.nombre}`,
     })
     setGuardando(false)
     if (error) { Alert.alert('Error al registrar la venta', error.message); return }
-    Alert.alert('Éxito', 'Venta registrada correctamente')
+    Alert.alert('Éxito', hayConexion() ? 'Venta registrada correctamente' : 'Venta guardada sin conexión. Se subirá sola cuando vuelva la señal.')
     router.back()
   }
 

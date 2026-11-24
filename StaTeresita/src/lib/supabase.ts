@@ -3,16 +3,23 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import { configurarClaveSesion, crearFetchOffline } from './offline/fetchOffline';
 import 'react-native-url-polyfill/auto'; // necesario en RN
 
-const supabaseUrl = 'https://nyrewlfvgcchjodrqwqp.supabase.co';
-const supabaseAnonKey = 'sb_publishable_qbytqJduAkMZQcHEQNOS1w_zTfGr2Dp';
+// Se pueden cambiar con EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_KEY (archivo .env o variables de EAS).
+// La clave "publishable" es pública por diseño (va dentro de la app); la seguridad la dan las políticas RLS.
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://nyrewlfvgcchjodrqwqp.supabase.co';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_KEY || 'sb_publishable_qbytqJduAkMZQcHEQNOS1w_zTfGr2Dp';
+
+// Modo sin conexión: las lecturas se guardan y las acciones se ponen en cola (lib/offline)
+configurarClaveSesion(supabaseUrl);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: crearFetchOffline(supabaseUrl) },
   auth: {
     storage: AsyncStorage,      // persiste la sesión en el dispositivo
     autoRefreshToken: true,     // renueva el token solo
-    persistSession: false,       // recuerda al usuario al reabrir
+    persistSession: true,        // la sesión queda abierta en el teléfono hasta que se cierre
     detectSessionInUrl: false,  // false en apps móviles
   },
 });

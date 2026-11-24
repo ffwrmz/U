@@ -1,7 +1,17 @@
+import EstadoCorrecciones from '@/components/EstadoCorrecciones'
 import Header from '@/components/Header'
+import PedirCorreccion, { ObjetivoCorreccion } from '@/components/PedirCorreccion'
+import ProximasVisitas from '@/components/ProximasVisitas'
+import SelectorDireccion from '@/components/SelectorDireccion'
+import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
-import { clp, fechaCorta } from '@/lib/format'
+import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
+import { hayConexion } from '@/lib/offline/red'
+import { esGerente } from '@/lib/roles'
+import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
+import { abrirWhatsApp as abrirWhatsAppCon, tieneWhatsapp } from '@/lib/whatsapp'
+import { Catalogo, catalogoVacio, cargarCatalogo, DireccionForm, direccionDeCliente, direccionVacia, guardarDireccion, textoDireccion, ubicarDireccion, validarDireccion } from '@/lib/zonas'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
@@ -19,7 +29,7 @@ interface Venta {
   fecha_venta: string | null
   pagos: Pago[]
 }
-interface Linea { venta_pedido_id: string; cantidad: number; productos: { nombre: string } | null }
+interface Linea { id: string; venta_pedido_id: string; producto_id: string; cantidad: number; precio_final: number; productos: { nombre: string } | null }
 
 const fechaPago = (p: Pago) => p.fecha_pago ?? p.creado_en
 
@@ -53,6 +63,28 @@ const HistorialCliente = () => {
   const [guardando, setGuardando] = useState(false)
   const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
 
+  // Editar datos del cliente (solo el gerente)
+  const [soyGerente, setSoyGerente] = useState(false)
+  const [modalEditar, setModalEditar] = useState(false)
+  const [form, setForm] = useState({ nombre: '', rut: '', telefono: '' })
+  const [formDireccion, setFormDireccion] = useState<DireccionForm>(direccionVacia)
+  const [catalogo, setCatalogo] = useState<Catalogo>(catalogoVacio)
+  const [guardandoDatos, setGuardandoDatos] = useState(false)
+
+  // Pedir corrección (casero): qué se corrige, y las solicitudes ya enviadas de este cliente
+  const [objetivo, setObjetivo] = useState<ObjetivoCorreccion | null>(null)
+  const [correcciones, setCorrecciones] = useState<Correccion[]>([])
+  const [referencia, setReferencia] = useState<string | null>(null)
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      setSoyGerente(esGerente(perfil?.rol))
+    })()
+  }, [])
+
   const cargar = useCallback(async () => {
     {
       const [c, v] = await Promise.all([
@@ -68,7 +100,7 @@ const HistorialCliente = () => {
       setVentas(lista)
       // Productos de cada compra (si la tabla aún no existe, simplemente no se muestran)
       if (lista.length > 0) {
-        const li = await supabase.from('venta_items').select('venta_pedido_id, cantidad, productos ( nombre )').in('venta_pedido_id', lista.map((x) => x.id))
+        const li = await supabase.from('venta_items').select('id, venta_pedido_id, producto_id, cantidad, precio_final, productos ( nombre )').in('venta_pedido_id', lista.map((x) => x.id))
         if (!li.error) setLineas((li.data as any[]) || [])
       }
       // Nombre de quien cobró cada pago
@@ -77,6 +109,14 @@ const HistorialCliente = () => {
         const pe = await supabase.from('perfiles').select('id, nombre').in('id', ids)
         if (!pe.error) setCobradores(Object.fromEntries(((pe.data as any[]) || []).map((x) => [x.id, x.nombre])))
       }
+      // Indicaciones de la casa (dirección) y solicitudes de corrección de este cliente
+      const cd = await supabase.from('clientes').select('direccion_id').eq('id', id).single()
+      const dirId = (cd.data as any)?.direccion_id
+      if (dirId) {
+        const d = await supabase.from('direcciones').select('referencia').eq('id', dirId).single()
+        setReferencia((d.data as any)?.referencia ?? null)
+      }
+      setCorrecciones(await correccionesDeCliente(id))
       setCargando(false)
     }
   }, [id])
@@ -105,23 +145,13 @@ const HistorialCliente = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
-      let resto = abono
-      for (const v of pendientes) {
-        if (resto <= 0) break
-        const saldo = Number(v.saldo_pendiente)
-        const parte = Math.min(resto, saldo)
-        const { error: e1 } = await supabase.from('pagos').insert([{
-          venta_pedido_id: v.id, cobrador_id: user.id, monto_abonado: parte, metodo_pago: metodo,
-        }])
-        if (e1) throw e1
-        const nuevo = saldo - parte
-        const { error: e2 } = await supabase.from('ventas_pedidos')
-          .update({ saldo_pendiente: nuevo, estado_pago: nuevo <= 0 ? 'pagada' : 'pendiente' }).eq('id', v.id)
-        if (e2) throw e2
-        resto -= parte
-      }
+      // La base reparte el abono FIFO (o lo aplica a la compra elegida) en una sola transacción
+      const { error } = await supabase.rpc('registrar_pago', destino
+        ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id }
+        : { p_monto: abono, p_metodo: metodo, p_cliente_id: id })
+      if (error) throw error
       setModalPago(false)
-      Alert.alert('Éxito', 'Pago registrado')
+      Alert.alert('Éxito', hayConexion() ? 'Pago registrado' : 'Pago guardado sin conexión. Se subirá solo cuando vuelva la señal.')
     } catch (e: any) {
       Alert.alert('Error al procesar pago', e.message)
     } finally {
@@ -143,21 +173,63 @@ const HistorialCliente = () => {
     let acumulado = 0
     const filas = pagos.map((p) => {
       acumulado += Number(p.monto_abonado)
-      return { fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
+      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
     }).reverse()
     const pagado = Math.max(total - Number(v.saldo_pendiente), 0)
     const pct = total > 0 ? Math.min(pagado / total, 1) : 0
-    return { total, anulada, pagada, color, fondo, nombre, filas, pagado, pct }
+    return { total, anulada, pagada, color, fondo, nombre, items, filas, pagado, pct }
   }
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({})
 
-  const estadoDe = (v: Venta) => {
-    if (v.estado_pago === 'anulada') return { texto: 'Anulada', fondo: Palette.grayPill, color: Palette.textMuted }
-    const saldo = Number(v.saldo_pendiente)
-    if (saldo <= 0) return { texto: 'Pagada', fondo: Palette.greenSoft, color: Palette.green }
-    if (saldo < Number(v.monto_total)) return { texto: 'Parcial', fondo: Palette.amberSoft, color: Palette.amber }
-    return { texto: 'Pendiente', fondo: Palette.grayPill, color: Palette.textMuted }
+  const abrirEditar = async () => {
+    if (!cliente) return
+    setForm({ nombre: cliente.nombre ?? '', rut: cliente.rut ?? '', telefono: telefonoLocal(cliente.telefono) })
+    setFormDireccion(direccionVacia)
+    setModalEditar(true)
+    // Catálogo de zonas y dirección actual del cliente (si ya tiene una de la tabla direcciones)
+    const { catalogo: cat } = await cargarCatalogo()
+    setCatalogo(cat)
+    const actual = await direccionDeCliente(cat, cliente.id)
+    if (actual) setFormDireccion(actual)
   }
+
+  const guardarDatos = async () => {
+    const nombre = form.nombre.trim()
+    const rut = form.rut.trim()
+    if (!nombre || !rut) { Alert.alert('Error', 'El nombre y el RUT son obligatorios'); return }
+    const telefono = normalizarTelefono(form.telefono)
+    if (!telefono) { Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)'); return }
+    const faltaDireccion = validarDireccion(formDireccion)
+    if (faltaDireccion) { Alert.alert('Error', faltaDireccion); return }
+    setGuardandoDatos(true)
+    try {
+      // Reutiliza la dirección si ya existe (puede ser compartida con otros clientes) o la crea
+      const direccionId = await guardarDireccion(formDireccion, catalogo)
+      const { data, error: e } = await supabase.from('clientes')
+        .update({ nombre, rut, telefono, direccion_id: direccionId, direccion: textoDireccion(catalogo, formDireccion) })
+        .eq('id', id).select('id, nombre, rut, telefono, direccion').single()
+      if (e) {
+        if (e.code === '23505') { Alert.alert('Error', 'Ya existe otro cliente con ese RUT'); return }
+        if (e.code === 'PGRST116') { Alert.alert('Error', 'No tienes permiso para editar este cliente'); return }
+        throw e
+      }
+      if (!data) { Alert.alert('Error', 'No tienes permiso para editar este cliente'); return }
+      setCliente(data as Cliente)
+      setModalEditar(false)
+      // Ubicación en el mapa de la dirección (si aún no tiene). No impide guardar si falla.
+      let ubicado = true
+      try { ubicado = (await ubicarDireccion(direccionId)) !== 'no' } catch { ubicado = false }
+      Alert.alert('Éxito', ubicado
+        ? 'Datos del cliente actualizados'
+        : 'Datos actualizados. No se pudo ubicar la casa en el mapa; se puede intentar después desde Zonas.')
+    } catch (e: any) {
+      Alert.alert('Error al guardar', e.message)
+    } finally {
+      setGuardandoDatos(false)
+    }
+  }
+
+  const abrirWhatsApp = () => abrirWhatsAppCon(cliente?.telefono)
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -170,9 +242,37 @@ const HistorialCliente = () => {
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.card}>
             <Dato icono="id-card-outline" texto={cliente.rut || 'Sin RUT'} />
-            <Dato icono="call-outline" texto={cliente.telefono || 'Sin teléfono'} />
+            <View style={styles.filaTelefono}>
+              <View style={{ flex: 1 }}>
+                <Dato icono="call-outline" texto={cliente.telefono || 'Sin teléfono'} />
+              </View>
+              {tieneWhatsapp(cliente.telefono) ? (
+                <Pressable style={({ pressed }) => [styles.botonWhatsApp, pressed && { opacity: 0.8 }]} onPress={abrirWhatsApp}
+                  accessibilityLabel="Escribir por WhatsApp" hitSlop={8}>
+                  <Ionicons name="logo-whatsapp" size={22} color={Palette.onNavy} />
+                </Pressable>
+              ) : null}
+            </View>
             <Dato icono="location-outline" texto={cliente.direccion || 'Sin dirección'} />
+            {!!referencia && <Dato icono="home-outline" texto={referencia} />}
+            {soyGerente ? (
+              <Pressable style={styles.botonEditar} onPress={abrirEditar}>
+                <Ionicons name="create-outline" size={16} color={Palette.navy} />
+                <Text style={styles.botonEditarText}>Editar datos</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.botonEditar} onPress={() => setObjetivo({ tipo: 'cliente', clienteId: cliente.id, telefono: cliente.telefono, referencia })}>
+                <Ionicons name="create-outline" size={16} color={Palette.navy} />
+                <Text style={styles.botonEditarText}>Pedir corrección de datos</Text>
+              </Pressable>
+            )}
           </View>
+
+          {/* Solicitudes de corrección enviadas (estado y comentario del gerente) */}
+          <EstadoCorrecciones correcciones={correcciones} />
+
+          {/* Días en que el cliente está preasignado a un casero (Calendario) */}
+          <ProximasVisitas clienteId={cliente.id} soyGerente={soyGerente} />
 
           <View style={styles.resumenFila}>
             <View style={styles.resumenCaja}>
@@ -242,6 +342,18 @@ const HistorialCliente = () => {
                       </Pressable>
                     )}
 
+                    {/* Productos de la compra: el casero puede pedir corregir cada uno */}
+                    {!soyGerente && !d.anulada && d.items.map((it) => (
+                      <View key={it.id} style={styles.itemFila}>
+                        <Text style={styles.itemFilaText} numberOfLines={1}>{it.cantidad} × {it.productos?.nombre ?? 'Producto'} · {clp(Number(it.precio_final))}</Text>
+                        <Pressable hitSlop={8} style={styles.corregir}
+                          onPress={() => setObjetivo({ tipo: 'venta_item', clienteId: id, ventaId: v.id, itemId: it.id, productoId: it.producto_id, productoNombre: it.productos?.nombre ?? 'Producto', cantidad: it.cantidad, precio: Number(it.precio_final) })}>
+                          <Ionicons name="create-outline" size={14} color={Palette.navy} />
+                          <Text style={styles.corregirText}>Corregir</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+
                     <View style={styles.matriz}>
                       <View style={[styles.fila, styles.filaHead]}>
                         {COLUMNAS.map((c, k) => (
@@ -250,7 +362,8 @@ const HistorialCliente = () => {
                       </View>
                       {d.filas.length === 0 && <Text style={[styles.celda, { textAlign: 'center' }]}>Todavía no hay abonos.</Text>}
                       {d.filas.map((f, n) => (
-                        <View key={n} style={[styles.fila, styles.filaInterna]}>
+                        <Pressable key={n} style={[styles.fila, styles.filaInterna]} disabled={soyGerente}
+                          onPress={() => setObjetivo({ tipo: 'pago', clienteId: id, ventaId: v.id, pagoId: f.id, monto: f.monto, fecha: f.fecha })}>
                           <Text style={[styles.celda, { flex: COLUMNAS[0].f }]}>{f.fecha}</Text>
                           <Text style={[styles.celda, styles.celdaNum, { flex: COLUMNAS[1].f }]}>{f.abono}</Text>
                           <Text style={[styles.celda, styles.celdaNum, styles.celdaSaldo, { flex: COLUMNAS[2].f }]}>{f.saldo}</Text>
@@ -258,9 +371,10 @@ const HistorialCliente = () => {
                             {f.metodo ? <Ionicons name={f.metodo === 'transferencia' ? 'swap-horizontal' : 'cash-outline'} size={18} color={Palette.navy} /> : null}
                             {!!f.quien && <Text style={styles.quien} numberOfLines={1}>{f.quien}</Text>}
                           </View>
-                        </View>
+                        </Pressable>
                       ))}
                     </View>
+                    {!soyGerente && d.filas.length > 0 && <Text style={styles.leyendaText}>¿Te equivocaste en un monto? Toca el abono para pedir corrección.</Text>}
                     <View style={styles.leyenda}>
                       <Ionicons name="cash-outline" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Efectivo</Text>
                       <Ionicons name="swap-horizontal" size={14} color={Palette.textMuted} /><Text style={styles.leyendaText}>Transferencia</Text>
@@ -319,6 +433,36 @@ const HistorialCliente = () => {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      <Modal visible={modalEditar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalEditar(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Editar cliente</Text>
+            <Pressable onPress={() => setModalEditar(false)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            {([
+              ['nombre', 'Nombre *', 'Nombre del cliente', 'default'],
+              ['rut', 'RUT *', 'Ej. 12.345.678-9', 'default'],
+            ] as const).map(([k, label, ph, teclado]) => (
+              <View key={k}>
+                <Text style={styles.label}>{label}</Text>
+                <TextInput style={styles.inputDato} value={form[k]} onChangeText={(t) => setForm((f) => ({ ...f, [k]: t }))}
+                  placeholder={ph} placeholderTextColor={Palette.textFaint} keyboardType={teclado} editable={!guardandoDatos} />
+              </View>
+            ))}
+            <Text style={styles.label}>Teléfono *</Text>
+            <TelefonoInput value={form.telefono} onChangeText={(t) => setForm((f) => ({ ...f, telefono: t }))} editable={!guardandoDatos} />
+            <Text style={[styles.seccion, { marginTop: 22 }]}>Dirección</Text>
+            <SelectorDireccion catalogo={catalogo} value={formDireccion} onChange={setFormDireccion} editable={!guardandoDatos} conUbicacion />
+            <Pressable style={[styles.botonGuardar, guardandoDatos && { opacity: 0.6 }]} onPress={guardarDatos} disabled={guardandoDatos}>
+              <Text style={styles.botonPagarText}>{guardandoDatos ? 'Guardando...' : 'Guardar cambios'}</Text>
+            </Pressable>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+      <PedirCorreccion objetivo={objetivo} onClose={() => setObjetivo(null)}
+        onEnviado={() => { setObjetivo(null); cargar(); Alert.alert('Solicitud enviada', 'El gerente la revisará. Verás aquí si la aprueba o la rechaza.') }} />
     </SafeAreaView>
   )
 }
@@ -331,6 +475,10 @@ const Dato = ({ icono, texto }: { icono: keyof typeof Ionicons.glyphMap; texto: 
 )
 
 const styles = StyleSheet.create({
+  itemFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  itemFilaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.text },
+  corregir: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  corregirText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
   card: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, padding: 14, gap: 10 },
@@ -353,17 +501,10 @@ const styles = StyleSheet.create({
   itemNombre: { fontSize: 15, fontWeight: '800', color: Palette.text },
   estadoPill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
   estadoPillText: { fontSize: 12, fontWeight: '800' },
-  detalleTop: { borderRadius: 16, borderWidth: 2, padding: 14, gap: 8 },
-  detalleSaldo: { fontSize: 20, fontWeight: '800' },
-  banner: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 8, gap: 6 },
-  bannerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  bannerProducto: { flex: 1, fontSize: 15, fontWeight: '800' },
-  bannerEstado: { fontSize: 13, fontWeight: '800' },
   barra: { height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
   barraRelleno: { height: 8, borderRadius: 4 },
   bannerSub: { fontSize: 12, color: Palette.textMuted },
   quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 60 },
-  botonPagar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: Palette.orange, borderRadius: 14, paddingVertical: 14 },
   botonGuardar: { backgroundColor: Palette.navy, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   botonPagarText: { color: Palette.onNavy, fontSize: 16, fontWeight: '800' },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
@@ -380,37 +521,24 @@ const styles = StyleSheet.create({
   metodoText: { fontSize: 14, fontWeight: '700', color: Palette.navy },
   nota: { fontSize: 12, color: Palette.textMuted, marginTop: 16 },
   leyenda: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  punto: { width: 10, height: 10, borderRadius: 5 },
   leyendaText: { fontSize: 12, color: Palette.textMuted, marginRight: 8 },
   matriz: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, overflow: 'hidden' },
   fila: { flexDirection: 'row' },
   filaHead: { backgroundColor: Palette.navySoft },
   filaInterna: { borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.07)' },
-  grupo: { borderTopWidth: 1, borderTopColor: Palette.border, borderLeftWidth: 5 },
   celda: { paddingHorizontal: 6, paddingVertical: 10, fontSize: 12, color: Palette.text, justifyContent: 'center' },
   celdaHead: { fontSize: 11, fontWeight: '800', color: Palette.navy, paddingVertical: 9 },
-  celdaProducto: { fontWeight: '800' },
   celdaNum: { textAlign: 'right' },
   celdaSaldo: { fontWeight: '800' },
   celdaUltima: { textAlign: 'center' },
-  cardHintMini: { fontSize: 12, color: Palette.textFaint, textAlign: 'center' },
-  compra: { backgroundColor: Palette.card, borderRadius: 16, borderWidth: 1, borderColor: Palette.border, overflow: 'hidden' },
-  compraCabecera: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
-  compraTitulo: { fontSize: 15, fontWeight: '700', color: Palette.text },
   sub: { fontSize: 12, color: Palette.textMuted, marginTop: 2 },
   negrita: { fontWeight: '800', color: Palette.text },
-  pill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 4 },
-  pillText: { fontSize: 11, fontWeight: '800' },
-  compraDetalle: { backgroundColor: Palette.cream, borderTopWidth: 1, borderTopColor: Palette.border, padding: 12, gap: 8 },
-  montos: { flexDirection: 'row', justifyContent: 'space-between' },
-  subSeccion: { fontSize: 12, fontWeight: '700', color: Palette.navy, marginTop: 4 },
-  abono: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 12, borderWidth: 1, borderColor: Palette.border, padding: 10 },
-  abonoNum: { width: 24, height: 24, borderRadius: 12, backgroundColor: Palette.navySoft, textAlign: 'center', lineHeight: 24, fontSize: 12, fontWeight: '800', color: Palette.navy, overflow: 'hidden' },
-  abonoFecha: { fontSize: 14, color: Palette.text },
-  abonoMonto: { fontSize: 15, fontWeight: '800', color: Palette.text },
-  verDetalle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8 },
-  verDetalleText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 20, fontSize: 14, paddingHorizontal: 20 },
+  filaTelefono: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  botonWhatsApp: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.green },
+  botonEditar: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Palette.navySoft, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
+  botonEditarText: { color: Palette.navy, fontSize: 13, fontWeight: '800' },
+  inputDato: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, height: 50, fontSize: 15, color: Palette.text },
 })
 
 export default HistorialCliente
