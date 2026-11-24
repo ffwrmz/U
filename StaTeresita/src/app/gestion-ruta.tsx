@@ -3,7 +3,7 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import {
   asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas,
-  comunaDe, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
+  comunaDe, listarEstadosCaseros, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
 import { fechaISO, PreDia, preasignar, resolverPreasignados } from '@/lib/preasignaciones'
@@ -58,6 +58,10 @@ const GestionRuta = () => {
   const [selector, setSelector] = useState<Selector | null>(null)
 
   const estado: EstadoJornada = jornada?.estado ?? 'preparacion'
+  // Cada casero (o el gerente en su propia ruta) comienza su ruta sin iniciar la jornada de todos:
+  // con al menos una ruta en curso, el gerente ya puede finalizar la ruta del día.
+  const [rutasIniciadas, setRutasIniciadas] = useState(0)
+  const enCurso = estado === 'en_curso' || (estado === 'preparacion' && rutasIniciadas > 0)
   // El gerente solo puede cambiar la ruta mientras la jornada está en preparación
   const editable = estado === 'preparacion' && soyGerente
   const caseros = vendedores
@@ -93,6 +97,7 @@ const GestionRuta = () => {
         try {
           const j = await obtenerOCrearJornadaHoy(gerente)
           setJornada(j)
+          setRutasIniciadas(j ? Object.values(await listarEstadosCaseros(j.id)).filter((e) => e === 'en_curso').length : 0)
           setParadas(j ? await listarParadas(j.id) : [])
           setError(null)
         } catch (e: any) {
@@ -306,9 +311,9 @@ const GestionRuta = () => {
               {ocupado && <ActivityIndicator size="small" color={Palette.onNavy} />}
               {soyGerente && jornada && estado !== 'finalizada' && (
                 <Pressable style={styles.jornadaBtn} disabled={ocupado}
-                  onPress={() => (estado === 'preparacion' ? router.push('../organizar-ruta') : cambiarEstado('finalizada'))}>
-                  <Ionicons name={estado === 'preparacion' ? 'play' : 'stop'} size={13} color={Palette.onNavy} />
-                  <Text style={styles.jornadaBtnText}>{estado === 'preparacion' ? 'Organizar e iniciar ruta' : 'Finalizar ruta'}</Text>
+                  onPress={() => (enCurso ? cambiarEstado('finalizada') : router.push('../organizar-ruta'))}>
+                  <Ionicons name={enCurso ? 'stop' : 'play'} size={13} color={Palette.onNavy} />
+                  <Text style={styles.jornadaBtnText}>{enCurso ? 'Finalizar ruta del día' : 'Organizar e iniciar ruta'}</Text>
                 </Pressable>
               )}
             </View>
