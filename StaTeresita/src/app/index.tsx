@@ -14,6 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
 import { cuentaActiva } from '@/lib/notificaciones'
+import { formatearRut, rutValido } from '@/lib/rut'
 import { Palette } from '@/constants/palette'
 
 
@@ -21,6 +22,9 @@ const Index = () => {
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const [email, setEmail] = useState('')
+  const [rut, setRut] = useState('')
+  // Se entra con RUT; con correo queda como alternativa (ej. mientras a alguien le falta el RUT)
+  const [conCorreo, setConCorreo] = useState(false)
   const [password, setPassword] = useState('')
   const [mostrarPassword, setMostrarPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -47,18 +51,39 @@ const Index = () => {
     })()
   }, [router])
 
-  const handleLogin = async () => {
+  // Con RUT: la función login-rut de Supabase busca la cuenta por el RUT y devuelve la sesión
+  const entrarConRut = async (): Promise<{ data: { user: any } ; error: { message: string } | null }> => {
+    const { data, error } = await supabase.functions.invoke('login-rut', { body: { rut, password } })
+    if (error) {
+      let mensaje = 'RUT o contraseña incorrectos'
+      try {
+        const ctx = (error as any).context
+        if (ctx?.status === 404) mensaje = 'El inicio con RUT aún no está activado. Entra con correo.'
+        else { const j = await ctx?.json?.(); if (j?.error) mensaje = j.error }
+      } catch {
+        mensaje = 'No hay conexión. Revisa tu internet e inténtalo de nuevo.'
+      }
+      if ((error as any).name === 'FunctionsFetchError') mensaje = 'No hay conexión. Revisa tu internet e inténtalo de nuevo.'
+      return { data: { user: null }, error: { message: mensaje } }
+    }
+    const r = await supabase.auth.setSession({ access_token: (data as any).access_token, refresh_token: (data as any).refresh_token })
+    return { data: { user: r.data.user }, error: r.error ? { message: r.error.message } : null }
+  }
 
-    if (!email || !password) {
-      Alert.alert('Error', 'Por favor ingresa tu correo y contraseña')
+  const handleLogin = async () => {
+    if (conCorreo ? !email || !password : !rut || !password) {
+      Alert.alert('Error', conCorreo ? 'Por favor ingresa tu correo y contraseña' : 'Por favor ingresa tu RUT y contraseña')
+      return
+    }
+    if (!conCorreo && !rutValido(rut)) {
+      Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza')
       return
     }
     setLoading(true)
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { data, error } = conCorreo
+      ? await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      : await entrarConRut()
 
     // Un trabajador desactivado por el gerente no puede entrar
     let desactivado = false
@@ -108,21 +133,41 @@ const Index = () => {
           <Text style={styles.title}>Bienvenido</Text>
           <Text style={styles.subtitle}>Inicia sesión para continuar</Text>
 
-          {/* Campo de correo */}
-          <Text style={styles.label}>Correo</Text>
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color={Palette.textMuted} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="correo@ejemplo.com"
-              placeholderTextColor={Palette.textFaint}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          {conCorreo ? (
+            <>
+              <Text style={styles.label}>Correo</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color={Palette.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="correo@ejemplo.com"
+                  placeholderTextColor={Palette.textFaint}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.label}>RUT</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="id-card-outline" size={20} color={Palette.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="12.345.678-9"
+                  placeholderTextColor={Palette.textFaint}
+                  value={rut}
+                  onChangeText={(t) => setRut(formatearRut(t))}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  maxLength={12}
+                />
+              </View>
+            </>
+          )}
 
           {/* Campo de contraseña */}
           <Text style={styles.label}>Contraseña</Text>
@@ -162,6 +207,10 @@ const Index = () => {
             ) : (
               <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
             )}
+          </Pressable>
+
+          <Pressable onPress={() => setConCorreo((v) => !v)} hitSlop={8} style={styles.alternar}>
+            <Text style={styles.alternarText}>{conCorreo ? 'Entrar con RUT' : 'Entrar con correo'}</Text>
           </Pressable>
         </View>
       </View>
@@ -227,6 +276,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   buttonPressed: { opacity: 0.7 },
+  alternar: { alignSelf: 'center', marginTop: 16, padding: 4 },
+  alternarText: { fontSize: 14, fontWeight: '700', color: Palette.orange },
   loginButtonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
 })
 

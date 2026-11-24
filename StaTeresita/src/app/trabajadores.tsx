@@ -3,6 +3,7 @@ import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import { normalizarTelefono } from '@/lib/format'
+import { formatearRut, normalizarRut, rutValido } from '@/lib/rut'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from 'expo-router'
@@ -10,7 +11,7 @@ import { useCallback, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-interface Trabajador { id: string; nombre: string; rol: string; activo?: boolean | null; email?: string | null; telefono?: string | null }
+interface Trabajador { id: string; nombre: string; rol: string; activo?: boolean | null; email?: string | null; telefono?: string | null; rut?: string | null }
 type Filtro = 'activos' | 'inactivos' | 'todos'
 
 const ROLES = [
@@ -57,7 +58,9 @@ const Trabajadores = () => {
   const [filtro, setFiltro] = useState<Filtro>('activos')
 
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ nombre: '', email: '', password: '', telefono: '', rol: 'vendedor' as 'vendedor' | 'dueno' })
+  const [form, setForm] = useState({ nombre: '', rut: '', email: '', password: '', telefono: '', rol: 'vendedor' as 'vendedor' | 'dueno' })
+  // Poner o cambiar el RUT de un trabajador que ya existe
+  const [editarRut, setEditarRut] = useState<{ t: Trabajador; rut: string } | null>(null)
   const [verPassword, setVerPassword] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -125,7 +128,7 @@ const Trabajadores = () => {
   }
 
   const abrirNuevo = () => {
-    setForm({ nombre: '', email: '', password: generarPassword(), telefono: '', rol: 'vendedor' })
+    setForm({ nombre: '', rut: '', email: '', password: generarPassword(), telefono: '', rol: 'vendedor' })
     setVerPassword(false)
     setModal(true)
   }
@@ -133,22 +136,39 @@ const Trabajadores = () => {
   const crear = async () => {
     const nombre = form.nombre.trim()
     const email = form.email.trim()
-    if (!nombre || !email) { Alert.alert('Error', 'El nombre y el correo son obligatorios'); return }
-    if (!/^\S+@\S+\.\S+$/.test(email)) { Alert.alert('Error', 'Revisa el correo'); return }
+    if (!nombre || !form.rut) { Alert.alert('Error', 'El nombre y el RUT son obligatorios'); return }
+    if (!rutValido(form.rut)) { Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza'); return }
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) { Alert.alert('Error', 'Revisa el correo'); return }
     if (form.password.length < 6) { Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres'); return }
     const telefono = form.telefono ? normalizarTelefono(form.telefono) : null
     if (form.telefono && !telefono) { Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)'); return }
     setGuardando(true)
     try {
-      await llamar({ accion: 'crear', nombre, email, password: form.password, rol: form.rol, ...(telefono ? { telefono } : {}) })
+      await llamar({ accion: 'crear', nombre, rut: normalizarRut(form.rut), ...(email ? { email } : {}), password: form.password, rol: form.rol, ...(telefono ? { telefono } : {}) })
       setModal(false)
-      Alert.alert('Trabajador creado', `Pásale estos datos a ${nombre} para que entre a la app:\n\nCorreo: ${email}\nContraseña: ${form.password}`)
+      Alert.alert('Trabajador creado', `Pásale estos datos a ${nombre} para que entre a la app:\n\nRUT: ${formatearRut(form.rut)}\nContraseña: ${form.password}`)
       cargar()
     } catch (e: any) {
       Alert.alert('No se pudo crear', e.message)
     } finally {
       setGuardando(false)
     }
+  }
+
+  const guardarRut = async () => {
+    if (!editarRut) return
+    if (!rutValido(editarRut.rut)) { Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza'); return }
+    setOcupado(editarRut.t.id)
+    const rut = normalizarRut(editarRut.rut)
+    const { error: e } = await supabase.from('perfiles').update({ rut }).eq('id', editarRut.t.id)
+    setOcupado(null)
+    if (e) {
+      Alert.alert('Error', e.code === '23505' ? 'Ese RUT ya lo tiene otro trabajador' : e.code === '42703' || /rut/.test(e.message) && /column/.test(e.message)
+        ? 'Falta correr en Supabase el archivo 20261124190000_rut_trabajadores.sql' : e.message)
+      return
+    }
+    setLista((l) => l.map((x) => (x.id === editarRut.t.id ? { ...x, rut } : x)))
+    setEditarRut(null)
   }
 
   const activos = lista.filter(activo).length
@@ -195,6 +215,9 @@ const Trabajadores = () => {
                     {t.rol === 'dueno' ? 'Gerente' : 'Casero'}{t.email ? ` · ${t.email}` : ''}
                   </Text>
                   {!!t.telefono && <Text style={styles.sub}>+{t.telefono}</Text>}
+                  <Pressable onPress={() => setEditarRut({ t, rut: t.rut ? formatearRut(t.rut) : '' })} hitSlop={6}>
+                    <Text style={[styles.sub, t.rut ? null : styles.sinRut]}>{t.rut ? `RUT ${formatearRut(t.rut)}` : 'Sin RUT · toca para ponerlo'}</Text>
+                  </Pressable>
                   <View style={[styles.badge, { backgroundColor: on ? Palette.greenSoft : Palette.grayPill }]}>
                     <Text style={[styles.badgeText, { color: on ? Palette.green : Palette.textMuted }]}>{on ? 'Activo' : 'Inactivo'}</Text>
                   </View>
@@ -228,7 +251,12 @@ const Trabajadores = () => {
             <TextInput style={styles.input} value={form.nombre} onChangeText={(t) => setForm((f) => ({ ...f, nombre: t }))}
               placeholder="Ej. Juan Pérez" placeholderTextColor={Palette.textFaint} editable={!guardando} />
 
-            <Text style={styles.label}>Correo *</Text>
+            <Text style={styles.label}>RUT * (con él inicia sesión)</Text>
+            <TextInput style={styles.input} value={form.rut} onChangeText={(t) => setForm((f) => ({ ...f, rut: formatearRut(t) }))}
+              placeholder="12.345.678-9" placeholderTextColor={Palette.textFaint} editable={!guardando}
+              autoCapitalize="characters" autoCorrect={false} maxLength={12} />
+
+            <Text style={styles.label}>Correo (opcional)</Text>
             <TextInput style={styles.input} value={form.email} onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
               placeholder="correo@ejemplo.cl" placeholderTextColor={Palette.textFaint} editable={!guardando}
               keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
@@ -268,6 +296,26 @@ const Trabajadores = () => {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* Poner o cambiar el RUT de un trabajador (con él inicia sesión) */}
+      <Modal visible={!!editarRut} transparent animationType="fade" onRequestClose={() => setEditarRut(null)}>
+        <View style={styles.fondo}>
+          <View style={styles.caja}>
+            <Text style={styles.modalTitle}>RUT de {editarRut?.t.nombre}</Text>
+            <TextInput style={styles.input} value={editarRut?.rut ?? ''} autoFocus
+              onChangeText={(t) => setEditarRut((e) => e && { ...e, rut: formatearRut(t) })}
+              placeholder="12.345.678-9" placeholderTextColor={Palette.textFaint} autoCapitalize="characters" autoCorrect={false} maxLength={12} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable style={[styles.cajaBoton, { backgroundColor: Palette.grayPill }]} onPress={() => setEditarRut(null)}>
+                <Text style={[styles.cajaBotonText, { color: Palette.text }]}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={styles.cajaBoton} onPress={guardarRut}>
+                <Text style={styles.cajaBotonText}>Guardar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -284,6 +332,11 @@ const styles = StyleSheet.create({
   avatarText: { color: Palette.onNavy, fontWeight: '800', fontSize: 16 },
   nombre: { fontSize: 16, fontWeight: '700', color: Palette.text },
   sub: { fontSize: 12, color: Palette.textMuted, marginTop: 1 },
+  sinRut: { color: Palette.orange, fontWeight: '700' },
+  fondo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
+  caja: { backgroundColor: Palette.cream, borderRadius: 18, padding: 18, gap: 14 },
+  cajaBoton: { flex: 1, backgroundColor: Palette.navy, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  cajaBotonText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },
   badge: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
   badgeText: { fontSize: 11, fontWeight: '800' },
   filtros: { flexDirection: 'row', gap: 8 },

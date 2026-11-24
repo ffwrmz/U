@@ -43,20 +43,27 @@ Deno.serve(async (req) => {
     const accion = body.accion as string;
 
     if (accion === "crear") {
-      const email = String(body.email ?? "").trim().toLowerCase();
       const password = String(body.password ?? "");
       const nombre = String(body.nombre ?? "").trim();
       const rolNuevo = body.rol === "dueno" ? "dueno" : "vendedor";
       const telefono = body.telefono ? String(body.telefono) : null;
+      // RUT (con él se inicia sesión). El correo es opcional: si no viene, se usa uno interno con el RUT.
+      const rut = body.rut ? String(body.rut).trim().toUpperCase() : null;
+      if (rut && !/^\d{6,8}-[\dK]$/.test(rut)) return json({ error: "El RUT no es válido." }, 400);
+      if (rut) {
+        const { data: otro } = await admin.from("perfiles").select("id").eq("rut", rut).maybeSingle();
+        if (otro) return json({ error: "Ya existe un trabajador con ese RUT." }, 400);
+      }
+      const email = String(body.email ?? "").trim().toLowerCase() || (rut ? `${rut.replace("-", "").toLowerCase()}@stateresita.app` : "");
       if (!email || !nombre || password.length < 6) {
-        return json({ error: "Faltan datos: nombre, correo y una contraseña de al menos 6 caracteres." }, 400);
+        return json({ error: "Faltan datos: nombre, RUT y una contraseña de al menos 6 caracteres." }, 400);
       }
       const { data: creado, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
       if (error || !creado.user) {
         const msg = error?.message?.includes("already") ? "Ya existe un usuario con ese correo." : (error?.message ?? "No se pudo crear el usuario.");
         return json({ error: msg }, 400);
       }
-      const { error: e2 } = await admin.from("perfiles").insert({ id: creado.user.id, nombre, rol: rolNuevo, email, telefono, activo: true });
+      const { error: e2 } = await admin.from("perfiles").insert({ id: creado.user.id, nombre, rol: rolNuevo, email, telefono, activo: true, ...(rut ? { rut } : {}) });
       if (e2) {
         await admin.auth.admin.deleteUser(creado.user.id);
         return json({ error: "No se pudo guardar el perfil: " + e2.message }, 400);
