@@ -34,13 +34,13 @@ declare
   v_venta uuid;
   v_pago uuid;
   v_total numeric;
+  v_items jsonb;
   v_monto numeric;
   v_n int;
   v_i int;
   v_k int;
   v_usados uuid[];
   r record;
-  p record;
 begin
   -- 0) Borrar lo creado antes por este archivo
   delete from pagos where id in (select id from pruebas.datos_calendario where tabla = 'pagos')
@@ -115,16 +115,18 @@ begin
 
         -- Venta (55% de las visitas): 1 a 3 productos reales
         if random() < 0.55 then
+          -- Productos elegidos primero (el total de la venta debe ser mayor a 0 al guardarla)
+          select jsonb_agg(jsonb_build_object('id', x.id, 'precio', x.precio_venta, 'cant', case when random() < 0.8 then 1 else 2 end))
+            into v_items
+            from (select id, precio_venta from productos where activo and precio_venta > 0 order by random() limit (1 + floor(random() * 3)::int)) x;
+          select sum((e->>'precio')::numeric * (e->>'cant')::int) into v_total from jsonb_array_elements(v_items) e;
           insert into ventas_pedidos (cliente_id, vendedor_id, monto_total, saldo_pendiente, estado_pago, descripcion, fecha_venta, creado_en)
-          values (v_c, v_t, 0, 0, 'pendiente', '(prueba calendario)', v_hora, v_hora)
+          values (v_c, v_t, v_total, v_total, 'pendiente', '(prueba calendario)', v_hora, v_hora)
           returning id into v_venta;
           insert into pruebas.datos_calendario values ('ventas_pedidos', v_venta);
-          for p in select id, precio_venta from productos where activo and precio_venta > 0 order by random() limit (1 + floor(random() * 3)::int) loop
-            insert into venta_items (venta_pedido_id, producto_id, ubicacion_id, cantidad, precio_lista, descuento_tipo, descuento_valor, precio_final)
-            values (v_venta, p.id, v_ubic, case when random() < 0.8 then 1 else 2 end, p.precio_venta, 'ninguno', 0, p.precio_venta);
-          end loop;
-          select sum(precio_final * cantidad) into v_total from venta_items where venta_pedido_id = v_venta;
-          update ventas_pedidos set monto_total = v_total, saldo_pendiente = v_total where id = v_venta;
+          insert into venta_items (venta_pedido_id, producto_id, ubicacion_id, cantidad, precio_lista, descuento_tipo, descuento_valor, precio_final)
+          select v_venta, (e->>'id')::uuid, v_ubic, (e->>'cant')::int, (e->>'precio')::numeric, 'ninguno', 0, (e->>'precio')::numeric
+            from jsonb_array_elements(v_items) e;
           -- Al contado (20%) o con pie (40% de las de crédito); el trigger de pagos descuenta el saldo
           v_monto := case when random() < 0.2 then v_total
                           when random() < 0.4 then least(v_total, greatest(5000, round(v_total * 0.2 / 1000) * 1000))
