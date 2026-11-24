@@ -2,11 +2,11 @@ import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import {
-  asignarParadas, cambiarEstadoJornada, ClienteRuta, EstadoJornada, Jornada, listarParadas,
+  asignarParadas, ClienteRuta, EstadoJornada, Jornada, listarParadas,
   comunaDe, listarEstadosCaseros, obtenerOCrearJornadaHoy, ordenarCaseros, Parada, quitarParada, sectorDe, SELECT_CLIENTE, textoEstadoJornada,
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
-import { fechaISO, PreDia, preasignar, resolverPreasignados } from '@/lib/preasignaciones'
+import { fechaISO, PreDia, resolverPreasignados } from '@/lib/preasignaciones'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -58,8 +58,8 @@ const GestionRuta = () => {
   const [selector, setSelector] = useState<Selector | null>(null)
 
   const estado: EstadoJornada = jornada?.estado ?? 'preparacion'
-  // Cada casero (o el gerente en su propia ruta) comienza su ruta sin iniciar la jornada de todos:
-  // con al menos una ruta en curso, el gerente ya puede finalizar la ruta del día.
+  // Cada casero (o el gerente en su propia ruta) comienza y finaliza su ruta en Ruta en curso;
+  // con alguna ruta ya comenzada aquí no se ofrece "Organizar e iniciar".
   const [rutasIniciadas, setRutasIniciadas] = useState(0)
   const enCurso = estado === 'en_curso' || (estado === 'preparacion' && rutasIniciadas > 0)
   // El gerente solo puede cambiar la ruta mientras la jornada está en preparación
@@ -195,38 +195,6 @@ const GestionRuta = () => {
   const quitar = (p: Parada) => ejecutar(() => quitarParada(p.id))
 
 
-  // Al finalizar el día: revisión de los clientes de las rutas de hoy que no se visitaron (pendientes o
-  // "No estaba") para agregarlos a la lista de mañana. Si no hay ninguno, se finaliza directo.
-  const [finalizar, setFinalizar] = useState<{ items: Parada[]; marcados: string[] } | null>(null)
-  const finalizarJornada = async (paraManana: string[]) => {
-    if (!jornada) return
-    setFinalizar(null)
-    await ejecutar(async () => {
-      if (paraManana.length > 0) {
-        const manana = new Date(); manana.setDate(manana.getDate() + 1)
-        const fecha = fechaISO(manana)
-        // No duplicar los que mañana ya están (por lista fija o a mano)
-        const yaManana = new Set((await resolverPreasignados(fecha, fecha)).map((p) => p.cliente_id))
-        await preasignar(fecha, null, paraManana.filter((id) => !yaManana.has(id)))
-      }
-      setJornada(await cambiarEstadoJornada(jornada.id, 'finalizada'))
-    })
-  }
-
-  const cambiarEstado = (nuevo: EstadoJornada) => {
-    if (!jornada) return
-    if (nuevo === 'finalizada') {
-      const sinVisitar = paradas.filter((p) => p.estado !== 'visitado')
-      if (sinVisitar.length === 0) { finalizarJornada([]); return }
-      setFinalizar({ items: sinVisitar, marcados: sinVisitar.map((p) => p.cliente_id) })
-      return
-    }
-    Alert.alert('Iniciar ruta', 'Al iniciar se bloquean los clientes asignados y su orden.', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Iniciar', onPress: () => ejecutar(async () => { setJornada(await cambiarEstadoJornada(jornada.id, nuevo)) }) },
-    ])
-  }
-
   // ---------- Filtros y orden (para elegir clientes) ----------
   const conZona = sinAsignar.filter((c) => c.dir)
   const opcionesComuna = unicos(conZona.map(comunaDe))
@@ -309,11 +277,10 @@ const GestionRuta = () => {
             <View style={styles.resumenTop}>
               <Text style={[styles.resumenLabel, { flex: 1 }]}>Jornada de hoy · {textoEstadoJornada(estado)}</Text>
               {ocupado && <ActivityIndicator size="small" color={Palette.onNavy} />}
-              {soyGerente && jornada && estado !== 'finalizada' && (
-                <Pressable style={styles.jornadaBtn} disabled={ocupado}
-                  onPress={() => (enCurso ? cambiarEstado('finalizada') : router.push('../organizar-ruta'))}>
-                  <Ionicons name={enCurso ? 'stop' : 'play'} size={13} color={Palette.onNavy} />
-                  <Text style={styles.jornadaBtnText}>{enCurso ? 'Finalizar ruta del día' : 'Organizar e iniciar ruta'}</Text>
+              {soyGerente && jornada && estado !== 'finalizada' && !enCurso && (
+                <Pressable style={styles.jornadaBtn} disabled={ocupado} onPress={() => router.push('../organizar-ruta')}>
+                  <Ionicons name="play" size={13} color={Palette.onNavy} />
+                  <Text style={styles.jornadaBtnText}>Organizar e iniciar ruta</Text>
                 </Pressable>
               )}
             </View>
@@ -407,6 +374,7 @@ const GestionRuta = () => {
                               <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
                               {cp && <DireccionCliente c={cp} compacta />}
                               {p.lista && <Text style={styles.preLista}>Lista: {p.lista.nombre}</Text>}
+                              {!!p.nota?.startsWith('De ayer') && <Text style={styles.deAyer}>{p.nota}</Text>}
                             </View>
                             <Pressable onPress={() => agregarPre(c.casero_id, [p.cliente_id])} disabled={ocupado} hitSlop={6} accessibilityLabel={`Agregar a la ruta de ${c.nombre}`}>
                               <Ionicons name="add-circle" size={24} color={Palette.navy} />
@@ -514,6 +482,7 @@ const GestionRuta = () => {
                         <DireccionCliente c={c} />
                         {otro && <Text style={styles.preOtro}>Preasignado a {nombreCaseroDe(otro)}</Text>}
                         {preDe(c.id)?.lista && <Text style={styles.preLista}>Lista: {preDe(c.id)!.lista!.nombre}</Text>}
+                        {!!preDe(c.id)?.nota?.startsWith('De ayer') && <Text style={styles.deAyer}>{preDe(c.id)!.nota}</Text>}
                       </View>
                     </Pressable>
                   )
@@ -569,49 +538,6 @@ const GestionRuta = () => {
         onClose={() => setMapaDe(null)}
         onPressCliente={(id) => { setMapaDe(null); router.push({ pathname: '/cliente/[id]', params: { id } } as any) }}
       />
-      {/* Finalizar el día: pasar a mañana los que no se visitaron */}
-      <Modal visible={!!finalizar} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setFinalizar(null)}>
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Finalizar ruta</Text>
-            <Pressable onPress={() => setFinalizar(null)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
-          </View>
-          {finalizar && (
-            <>
-              <Text style={[styles.sub, { padding: 16, paddingBottom: 4, fontWeight: '700', color: Palette.navy }]}>
-                ¿Agregar a la lista de mañana los clientes que no se visitaron o no estaban?
-              </Text>
-              <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
-                {finalizar.items.map((p) => {
-                  const on = finalizar.marcados.includes(p.cliente_id)
-                  const cp = p.cliente ?? clienteDe(p.cliente_id)
-                  return (
-                    <Pressable key={p.id} style={styles.finalItem}
-                      onPress={() => setFinalizar((f) => f && ({ ...f, marcados: on ? f.marcados.filter((x) => x !== p.cliente_id) : [...f.marcados, p.cliente_id] }))}>
-                      <Ionicons name={on ? 'checkbox' : 'square-outline'} size={22} color={on ? Palette.navy : Palette.textFaint} />
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
-                        <Text style={[styles.finalEstado, { color: p.estado === 'no_estaba' ? Palette.orange : Palette.navy }]}>
-                          {p.estado === 'no_estaba' ? 'No estaba' : 'No se visitó'} · {nombreCaseroDe(p.vendedor_id)}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  )
-                })}
-              </ScrollView>
-              <View style={{ padding: 16, gap: 10 }}>
-                <Pressable style={[styles.boton, finalizar.marcados.length === 0 && { opacity: 0.5 }]} disabled={finalizar.marcados.length === 0}
-                  onPress={() => finalizarJornada(finalizar.marcados)}>
-                  <Text style={styles.botonText}>{`Agregar ${finalizar.marcados.length} a mañana y finalizar`}</Text>
-                </Pressable>
-                <Pressable style={[styles.boton, { backgroundColor: Palette.grayPill }]} onPress={() => finalizarJornada([])}>
-                  <Text style={[styles.botonText, { color: Palette.text }]}>No, solo finalizar</Text>
-                </Pressable>
-              </View>
-            </>
-          )}
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   )
 }
@@ -646,14 +572,13 @@ const styles = StyleSheet.create({
   preFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.navySoft, borderRadius: 12, padding: 10 },
   grupoTitulo: { fontSize: 11, fontWeight: '800', color: Palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 4 },
   mostrarOcultos: { fontSize: 12, fontWeight: '700', color: Palette.orange, paddingHorizontal: 4 },
-  finalItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 12, borderWidth: 1, borderColor: Palette.border, padding: 10 },
-  finalEstado: { fontSize: 12, fontWeight: '700' },
   preCaja: { backgroundColor: Palette.navySoft, borderRadius: 12, padding: 8, gap: 6 },
   preTitulo: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   preBoton: { backgroundColor: Palette.orange, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   preBotonText: { color: Palette.onNavy, fontSize: 12, fontWeight: '800' },
   preItem: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderRadius: 10, padding: 8 },
   preLista: { fontSize: 12, fontWeight: '700', color: Palette.navy },
+  deAyer: { fontSize: 12, fontWeight: '800', color: Palette.orange },
   preOtro: { fontSize: 12, fontWeight: '700', color: Palette.amber },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },

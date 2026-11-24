@@ -6,11 +6,12 @@ import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import { clp, fechaCorta } from '@/lib/format'
 import { abrirComoLlegar, distanciaMetros, obtenerMiUbicacion, registrarPosicion, ordenPorCalles, Punto, puntoDe, rutaPorCalles, RutaCalles, rutaSugerida, seguirMiUbicacion, textoDistancia, textoDuracion, ubicacionesDeParadas } from '@/lib/mapa'
-import { cambiarEstadoJornada, esCaseroPrincipal, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
+import { cambiarEstadoJornada, esCaseroPrincipal, finalizarMiRuta, EstadoParada, EstadosCaseros, estadoRutaDe, iniciarMiRuta, listarEstadosCaseros, ordenarCaseros, Jornada, listarParadas, marcarParada, moverParada, reordenarParadas, obtenerOCrearJornadaHoy, Parada, textoEstadoJornada } from '@/lib/rutas'
 import { hayConexion } from '@/lib/offline/red'
 import { supabase } from '@/lib/supabase'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons'
+import PasarAManana from '@/components/ruta/PasarAManana'
 import { CeldaArrastrable, ProveedorArrastre, useArrastre } from '@/components/ruta/useArrastre'
 import * as Location from 'expo-location'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
@@ -415,6 +416,29 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
   }
 
 
+  // Finalizar MI ruta del día (al final de Ruta en curso). Si quedan clientes sin visitar o que no estaban,
+  // se pregunta si pasan a la ruta de mañana; si no, se finaliza directo. Después se vuelve al inicio.
+  const [porPasar, setPorPasar] = useState<Parada[] | null>(null)
+  const [finalizando, setFinalizando] = useState(false)
+  const finalizarRuta = async (paraManana: string[]) => {
+    if (!jornada) return
+    setFinalizando(true)
+    try {
+      await finalizarMiRuta(jornada.id, paraManana)
+      setPorPasar(null)
+      router.replace('/(tabs)/home' as any)
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? String(e))
+    } finally {
+      setFinalizando(false)
+    }
+  }
+  const tocarFinalizar = () => {
+    const sinVisitar = enOrden.filter((p) => p.estado !== 'visitado')
+    if (sinVisitar.length === 0) finalizarRuta([])
+    else setPorPasar(sinVisitar)
+  }
+
   const destello = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [aviso2, setAviso2] = useState<string | null>(null) // aviso breve, no bloqueante
   const avisar = (t: string) => { setAviso2(t); setTimeout(() => setAviso2((a) => (a === t ? null : a)), 4000) }
@@ -651,6 +675,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                 )}
               </View>
             }
+            ListFooterComponent={!organizando && esMia && estado === 'en_curso' && enOrden.length > 0 ? (
+              <Pressable style={[styles.terminar, { marginTop: 8 }, finalizando && { opacity: 0.6 }]} disabled={finalizando} onPress={tocarFinalizar}>
+                {finalizando ? <ActivityIndicator size="small" color={Palette.onNavy} /> : <Ionicons name="flag" size={18} color={Palette.onNavy} />}
+                <Text style={styles.terminarText}>Finalizar ruta del día</Text>
+              </Pressable>
+            ) : undefined}
             ListEmptyComponent={!error && jornada ? <Text style={styles.vacio}>No hay clientes en esta ruta hoy.</Text> : undefined}
             renderItem={({ item: p }) => {
               const index = numeroDe(p) - 1
@@ -818,6 +848,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
           </Pressable>
         </View>
       )}
+      <PasarAManana paradas={porPasar} ocupado={finalizando} onClose={() => setPorPasar(null)} onFinalizar={finalizarRuta} />
     </SafeAreaView>
   )
 }

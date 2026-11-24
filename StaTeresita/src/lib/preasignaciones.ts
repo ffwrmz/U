@@ -65,6 +65,7 @@ export interface PreDia {
   cliente: ClienteRuta | null
   origen: 'manual' | 'lista'
   id?: string // preasignación explícita
+  nota?: string | null // ej. "De ayer (no estaba)" cuando pasó del día anterior
   lista?: Pick<ListaFija, 'id' | 'nombre' | 'color'>
 }
 

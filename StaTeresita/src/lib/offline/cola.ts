@@ -194,11 +194,12 @@ const aplicarUna = (a: Accion, url: string, json: any) => {
     if (Array.isArray(json) && tablaLectura === 'ruta_paradas') json.sort((x, y) => (x.orden ?? 0) - (y.orden ?? 0))
     return
   }
-  if (fn === 'iniciar_mi_ruta') {
+  if (fn === 'iniciar_mi_ruta' || fn === 'finalizar_mi_ruta') {
+    const nuevo = fn === 'iniciar_mi_ruta' ? 'en_curso' : 'finalizada'
     if (tablaLectura !== 'jornada_vendedores' || !Array.isArray(json)) return
     const fila = json.find((o) => o.jornada_id === cuerpo.p_jornada && o.vendedor_id === yo)
-    if (fila) fila.estado = 'en_curso'
-    else json.push({ jornada_id: cuerpo.p_jornada, vendedor_id: yo, estado: 'en_curso', iniciada_en: a.creado_en })
+    if (fila) fila.estado = nuevo
+    else json.push({ jornada_id: cuerpo.p_jornada, vendedor_id: yo, estado: nuevo, iniciada_en: a.creado_en })
     return
   }
   if (fn === 'registrar_cliente') {
@@ -229,6 +230,7 @@ export const describir = (metodo: string, url: string, cuerpo: any): string => {
   if (t === 'rpc/registrar_cliente') return `Cliente nuevo: ${cuerpo?.p_nombre ?? ''}`
   if (t === 'rpc/reordenar_mi_ruta') return 'Orden de la ruta'
   if (t === 'rpc/iniciar_mi_ruta') return 'Comenzar ruta'
+  if (t === 'rpc/finalizar_mi_ruta') return `Finalizar ruta${cuerpo?.p_pasar_a_manana?.length ? ` (${cuerpo.p_pasar_a_manana.length} a mañana)` : ''}`
   if (t === 'rpc/set_ubicacion_direccion') return 'Ubicación de una casa'
   if (t === 'ruta_paradas' && metodo === 'PATCH') return cuerpo?.estado === 'visitado' ? 'Visita: Estaba' : cuerpo?.estado === 'no_estaba' ? 'Visita: No estaba' : 'Visita: pendiente'
   if (t === 'solicitudes_correccion') return 'Solicitud de corrección'

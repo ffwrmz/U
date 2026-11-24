@@ -189,6 +189,12 @@ export const estadoRutaDe = (jornada: Jornada | null, estados: EstadosCaseros, v
   return (vendedorId && estados[vendedorId]) || 'preparacion'
 }
 
+// Quien hace la ruta la finaliza (función finalizar_mi_ruta): los clientes indicados pasan a mañana con él
+export const finalizarMiRuta = async (jornadaId: string, paraManana: string[]) => {
+  const { error } = await supabase.rpc('finalizar_mi_ruta', { p_jornada: jornadaId, p_pasar_a_manana: paraManana })
+  if (error) throw error
+}
+
 // El casero comienza su propia ruta (función iniciar_mi_ruta en Supabase)
 export const iniciarMiRuta = async (jornadaId: string) => {
   const { error } = await supabase.rpc('iniciar_mi_ruta', { p_jornada: jornadaId })

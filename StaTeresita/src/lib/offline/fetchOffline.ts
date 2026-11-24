@@ -5,7 +5,7 @@ import { Accion, agregarAccion, aplicarPendientes, actualizarAccion, cargarCola,
 import { hayConexion, marcarConConexion, marcarSinConexion } from './red'
 
 // Funciones de Supabase que se pueden guardar para después (las demás necesitan señal)
-const RPC_EN_COLA = new Set(['registrar_pago', 'registrar_venta', 'registrar_cliente', 'reordenar_mi_ruta', 'iniciar_mi_ruta', 'set_ubicacion_direccion'])
+const RPC_EN_COLA = new Set(['registrar_pago', 'registrar_venta', 'registrar_cliente', 'reordenar_mi_ruta', 'iniciar_mi_ruta', 'finalizar_mi_ruta', 'set_ubicacion_direccion'])
 // Se envían una sola vez aunque la respuesta se pierda (ejecutar_accion_offline guarda el id de la acción)
 const RPC_IDEMPOTENTES = new Set(['registrar_pago', 'registrar_venta', 'registrar_cliente'])
 // Sin señal se descartan (no tiene sentido subirlas tarde)
