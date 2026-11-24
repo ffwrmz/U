@@ -6,8 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { usePathname, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Alert, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Alert, AppState, LogBox, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+// En Expo Go, expo-notifications avisa que no hay push remoto; aquí solo se usan notificaciones locales,
+// que sí funcionan, así que esos avisos no se muestran dentro de la app.
+LogBox.ignoreLogs(['expo-notifications', 'Push notifications (remote notifications) are unavailable'])
 
 // Notificaciones del sistema (expo-notifications). Si no se puede cargar (web), se usa solo el aviso dentro de la app.
 let Notifs: typeof import('expo-notifications') | null = null
