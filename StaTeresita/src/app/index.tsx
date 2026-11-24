@@ -14,7 +14,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
 import { cuentaActiva } from '@/lib/notificaciones'
-import { formatearRut, rutValido } from '@/lib/rut'
+import { formatearCuerpo, rutDesdeCuerpo } from '@/lib/rut'
 import { Palette } from '@/constants/palette'
 
 
@@ -53,7 +53,7 @@ const Index = () => {
 
   // Con RUT: la función login-rut de Supabase busca la cuenta por el RUT y devuelve la sesión
   const entrarConRut = async (): Promise<{ data: { user: any } ; error: { message: string } | null }> => {
-    const { data, error } = await supabase.functions.invoke('login-rut', { body: { rut, password } })
+    const { data, error } = await supabase.functions.invoke('login-rut', { body: { rut: rutDesdeCuerpo(rut), password } })
     if (error) {
       let mensaje = 'RUT o contraseña incorrectos'
       try {
@@ -75,8 +75,8 @@ const Index = () => {
       Alert.alert('Error', conCorreo ? 'Por favor ingresa tu correo y contraseña' : 'Por favor ingresa tu RUT y contraseña')
       return
     }
-    if (!conCorreo && !rutValido(rut)) {
-      Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza')
+    if (!conCorreo && !rutDesdeCuerpo(rut)) {
+      Alert.alert('Error', 'Escribe tu RUT sin el dígito verificador (7 u 8 números)')
       return
     }
     setLoading(true)
@@ -152,18 +152,17 @@ const Index = () => {
             </>
           ) : (
             <>
-              <Text style={styles.label}>RUT</Text>
+              <Text style={styles.label}>RUT (sin dígito verificador)</Text>
               <View style={styles.inputContainer}>
                 <Ionicons name="id-card-outline" size={20} color={Palette.textMuted} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="12.345.678-9"
+                  placeholder="12.345.678"
                   placeholderTextColor={Palette.textFaint}
                   value={rut}
-                  onChangeText={(t) => setRut(formatearRut(t))}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={12}
+                  onChangeText={(t) => setRut(formatearCuerpo(t))}
+                  keyboardType="number-pad"
+                  maxLength={10}
                 />
               </View>
             </>

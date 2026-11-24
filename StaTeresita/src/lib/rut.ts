@@ -35,3 +35,11 @@ export const formatearRut = (t: string) => {
   const cuerpo = l.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
   return `${cuerpo}-${l.slice(-1)}`
 }
+
+// Para iniciar sesión sin dígito verificador: solo los números del RUT ("12.345.678"),
+// el dígito se calcula aquí. Devuelve el RUT completo "12345678-5" o null si no tiene 7 u 8 números.
+export const rutDesdeCuerpo = (t: string) => {
+  const cuerpo = t.replace(/\D/g, '')
+  return /^\d{7,8}$/.test(cuerpo) ? `${cuerpo}-${dvDe(cuerpo)}` : null
+}
+export const formatearCuerpo = (t: string) => t.replace(/\D/g, '').slice(0, 8).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
