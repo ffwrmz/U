@@ -102,7 +102,7 @@ export default function MapaClientes({
       ref={mapRef}
       style={styles.map}
       customMapStyle={SIN_LUGARES}
-      showsPointsOfInterest={false}
+      showsPointsOfInterests={false}
       initialRegion={{
         latitude: CENTRO_INICIAL.latitud,
         longitude: CENTRO_INICIAL.longitud,
