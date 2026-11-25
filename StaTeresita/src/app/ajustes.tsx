@@ -22,6 +22,7 @@ const Ajustes = () => {
   const [caseros, setCaseros] = useState<Casero[]>([])
   const [abierto, setAbierto] = useState<string | null>(null)
   const [limites, setLimites] = useState<Record<string, string>>({})
+  const [limiteTipo, setLimiteTipo] = useState<Record<string, '%' | '$'>>({})
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [faltaSql, setFaltaSql] = useState(false)
 
@@ -40,7 +41,8 @@ const Ajustes = () => {
     setGeneral(String(g))
     const lista = ((ps.data as any[]) || []).filter((p) => p.activo !== false).map((p) => ({ id: p.id, nombre: p.nombre, ...permisosDe(p) }))
     setCaseros(lista)
-    setLimites(Object.fromEntries(lista.map((c) => [c.id, c.descuento_max == null ? '' : String(c.descuento_max)])))
+    setLimites(Object.fromEntries(lista.map((c) => [c.id, c.descuento_max_monto != null ? String(c.descuento_max_monto) : c.descuento_max == null ? '' : String(c.descuento_max)])))
+    setLimiteTipo(Object.fromEntries(lista.map((c) => [c.id, c.descuento_max_monto != null ? '$' : '%'])))
     setCargando(false)
   }, [])
 
@@ -63,12 +65,19 @@ const Ajustes = () => {
     finally { setOcupado(null) }
   }
 
+  // Límite propio del casero: en % o en $ (uno de los dos); vacío = usa el general
   const guardarLimite = (c: Casero) => {
     const t = (limites[c.id] ?? '').trim()
-    if (t === '') { cambiar(c, { descuento_max: null }); return }
-    const n = numero(t)
-    if (n == null || n < 0 || n > 100) { Alert.alert('Error', 'El descuento debe ser un número entre 0 y 100'); return }
-    cambiar(c, { descuento_max: n })
+    if (t === '') { cambiar(c, { descuento_max: null, descuento_max_monto: null }); return }
+    if ((limiteTipo[c.id] ?? '%') === '%') {
+      const n = numero(t)
+      if (n == null || n < 0 || n > 100) { Alert.alert('Error', 'El porcentaje debe ser un número entre 0 y 100'); return }
+      cambiar(c, { descuento_max: n, descuento_max_monto: null })
+    } else {
+      const n = numero(t.split('.').join(''))
+      if (n == null || n < 0) { Alert.alert('Error', 'Escribe un monto válido'); return }
+      cambiar(c, { descuento_max: null, descuento_max_monto: Math.round(n) })
+    }
   }
 
   return (
@@ -88,7 +97,7 @@ const Ajustes = () => {
           <Text style={styles.seccion}>Descuentos</Text>
           <View style={styles.card}>
             <Text style={styles.titulo}>Descuento máximo sin aprobación</Text>
-            <Text style={styles.sub}>Hasta este porcentaje el casero aplica el descuento solo; si es mayor, se lo pide al gerente.</Text>
+            <Text style={styles.sub}>El descuento se hace sobre el total de la compra. Hasta este porcentaje el casero lo aplica solo; si es mayor, se lo pide al gerente. Cada casero puede tener su propio límite abajo.</Text>
             <View style={styles.fila}>
               <View style={styles.inputPct}>
                 <TextInput style={styles.input} value={general} onChangeText={setGeneral} keyboardType="decimal-pad" maxLength={5} />
@@ -105,7 +114,9 @@ const Ajustes = () => {
           {caseros.map((c) => {
             const open = abierto === c.id
             const resumen = [!c.puede_vender && 'no vende', !c.puede_cobrar && 'no cobra', !c.puede_crear_clientes && 'no crea clientes',
-              c.descuento_max != null && `descuento hasta ${c.descuento_max}%`].filter(Boolean).join(' · ') || 'Todo permitido'
+              !c.puede_descontar && 'sin descuentos', c.tipo_venta === 'contado' && 'solo al contado', c.tipo_venta === 'credito' && 'solo a crédito',
+              c.puede_descontar && c.descuento_max != null && `descuento hasta ${c.descuento_max}%`,
+              c.puede_descontar && c.descuento_max_monto != null && `descuento hasta $${c.descuento_max_monto.toLocaleString('es-CL')}`].filter(Boolean).join(' · ') || 'Todo permitido'
             return (
               <View key={c.id} style={styles.card}>
                 <Pressable style={styles.filaTop} onPress={() => setAbierto(open ? null : c.id)}>
@@ -122,6 +133,7 @@ const Ajustes = () => {
                       ['puede_vender', 'Puede registrar ventas'],
                       ['puede_cobrar', 'Puede registrar pagos'],
                       ['puede_crear_clientes', 'Puede crear clientes nuevos'],
+                      ['puede_descontar', 'Puede hacer descuentos'],
                     ] as const).map(([k, t]) => (
                       <View key={k} style={styles.permiso}>
                         <Text style={styles.permisoText}>{t}</Text>
@@ -129,17 +141,37 @@ const Ajustes = () => {
                           trackColor={{ false: Palette.grayPill, true: Palette.green }} thumbColor={Palette.card} />
                       </View>
                     ))}
-                    <Text style={[styles.permisoText, { marginTop: 6 }]}>Descuento máximo propio (vacío = el general)</Text>
+                    <Text style={[styles.permisoText, { marginTop: 6 }]}>Tipo de venta que puede hacer</Text>
+                    <View style={styles.chips}>
+                      {([['ambas', 'Contado y crédito'], ['contado', 'Solo contado'], ['credito', 'Solo crédito']] as const).map(([k, t]) => (
+                        <Pressable key={k} style={[styles.chip, c.tipo_venta === k && styles.chipActivo]} onPress={() => cambiar(c, { tipo_venta: k })}>
+                          <Text style={[styles.chipText, c.tipo_venta === k && { color: Palette.onNavy }]}>{t}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {c.puede_descontar && (
+                    <>
+                    <Text style={[styles.permisoText, { marginTop: 6 }]}>Descuento máximo sobre el total (vacío = el general, {general}%)</Text>
                     <View style={styles.fila}>
+                      <View style={styles.chips}>
+                        {(['%', '$'] as const).map((k) => (
+                          <Pressable key={k} style={[styles.chip, (limiteTipo[c.id] ?? '%') === k && styles.chipActivo]} onPress={() => setLimiteTipo((x) => ({ ...x, [c.id]: k }))}>
+                            <Text style={[styles.chipText, (limiteTipo[c.id] ?? '%') === k && { color: Palette.onNavy }]}>{k}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
                       <View style={styles.inputPct}>
+                        {(limiteTipo[c.id] ?? '%') === '$' && <Text style={styles.pct}>$ </Text>}
                         <TextInput style={styles.input} value={limites[c.id] ?? ''} onChangeText={(t) => setLimites((l) => ({ ...l, [c.id]: t }))}
-                          keyboardType="decimal-pad" maxLength={5} placeholder={general} placeholderTextColor={Palette.textFaint} />
-                        <Text style={styles.pct}>%</Text>
+                          keyboardType="decimal-pad" maxLength={9} placeholder={(limiteTipo[c.id] ?? '%') === '%' ? general : '0'} placeholderTextColor={Palette.textFaint} />
+                        {(limiteTipo[c.id] ?? '%') === '%' && <Text style={styles.pct}>%</Text>}
                       </View>
                       <Pressable style={styles.botonSec} onPress={() => guardarLimite(c)}>
                         <Text style={styles.botonSecText}>Guardar</Text>
                       </Pressable>
                     </View>
+                    </>
+                    )}
                   </View>
                 )}
               </View>
@@ -171,6 +203,10 @@ const styles = StyleSheet.create({
   botonText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },
   botonSec: { backgroundColor: Palette.navySoft, borderRadius: 12, paddingHorizontal: 18, height: 48, justifyContent: 'center' },
   botonSecText: { color: Palette.navy, fontSize: 15, fontWeight: '800' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  chipActivo: { backgroundColor: Palette.navy },
+  chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   permiso: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
   permisoText: { fontSize: 14, color: Palette.text, flex: 1 },
   nota: { fontSize: 12, color: Palette.textMuted, marginTop: 6 },

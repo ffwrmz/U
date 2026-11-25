@@ -14,6 +14,7 @@ interface Solicitud {
   tipo: 'porcentaje' | 'monto'
   valor: number
   motivo: string | null
+  total_compra?: number | null // descuento sobre el total de la compra (sin producto)
   creado_en: string
   productos: { nombre: string; precio_venta: number } | null
   clientes: { nombre: string } | null
@@ -29,7 +30,7 @@ const SolicitudesDescuento = () => {
   const cargar = useCallback(async () => {
     const { data, error } = await supabase
       .from('solicitudes_descuento')
-      .select('id, tipo, valor, motivo, creado_en, productos ( nombre, precio_venta ), clientes ( nombre ), perfiles ( nombre )')
+      .select('*, productos ( nombre, precio_venta ), clientes ( nombre ), perfiles ( nombre )')
       .eq('estado', 'pendiente')
       .order('creado_en', { ascending: true })
     setErrorCarga(error ? error.message : null)
@@ -52,6 +53,12 @@ const SolicitudesDescuento = () => {
   }
 
   const textoDescuento = (s: Solicitud) => {
+    // Descuento sobre el total de la compra
+    if (!s.productos) {
+      const total = Number(s.total_compra ?? 0)
+      if (s.tipo === 'porcentaje') return `${Number(s.valor)}% del total${total ? ` (${clp(total * Number(s.valor) / 100)})` : ''}`
+      return `${clp(Number(s.valor))} del total${total ? ` (${((Number(s.valor) / total) * 100).toFixed(1)}%)` : ''}`
+    }
     const lista = Number(s.productos?.precio_venta ?? 0)
     if (s.tipo === 'porcentaje') return `${Number(s.valor)}% (${clp(lista * Number(s.valor) / 100)} por unidad)`
     const pct = lista > 0 ? (Number(s.valor) / lista) * 100 : 0
@@ -74,9 +81,9 @@ const SolicitudesDescuento = () => {
           {solicitudes.length === 0 && <Text style={styles.vacio}>No hay solicitudes pendientes.</Text>}
           {solicitudes.map((s) => (
             <View key={s.id} style={styles.card}>
-              <Text style={styles.titulo}>{s.productos?.nombre ?? 'Producto'}</Text>
+              <Text style={styles.titulo}>{s.productos?.nombre ?? 'Descuento sobre el total'}</Text>
               <Text style={styles.sub}>Pide: {s.perfiles?.nombre ?? 'Casero'}{s.clientes?.nombre ? ` · Cliente: ${s.clientes.nombre}` : ''}</Text>
-              <Text style={styles.sub}>Precio de lista: {clp(Number(s.productos?.precio_venta ?? 0))} · {fechaCorta(s.creado_en)}</Text>
+              <Text style={styles.sub}>{s.productos ? `Precio de lista: ${clp(Number(s.productos.precio_venta ?? 0))}` : `Total de la compra: ${clp(Number(s.total_compra ?? 0))}`} · {fechaCorta(s.creado_en)}</Text>
               <View style={styles.descuento}>
                 <Text style={styles.descuentoLabel}>Descuento solicitado</Text>
                 <Text style={styles.descuentoValor}>{textoDescuento(s)}</Text>

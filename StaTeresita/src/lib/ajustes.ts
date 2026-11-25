@@ -9,13 +9,19 @@ export interface Permisos {
   puede_vender: boolean
   puede_cobrar: boolean
   puede_crear_clientes: boolean
-  descuento_max: number | null // null = usa el general
+  puede_descontar: boolean
+  tipo_venta: 'ambas' | 'contado' | 'credito'
+  descuento_max: number | null // % propio; null = usa el general
+  descuento_max_monto: number | null // tope en $; null = sin tope
 }
 export const permisosDe = (p: any): Permisos => ({
   puede_vender: p?.puede_vender !== false,
   puede_cobrar: p?.puede_cobrar !== false,
   puede_crear_clientes: p?.puede_crear_clientes !== false,
+  puede_descontar: p?.puede_descontar !== false,
+  tipo_venta: p?.tipo_venta === 'contado' || p?.tipo_venta === 'credito' ? p.tipo_venta : 'ambas',
   descuento_max: p?.descuento_max == null ? null : Number(p.descuento_max),
+  descuento_max_monto: p?.descuento_max_monto == null ? null : Number(p.descuento_max_monto),
 })
 
 export const leerDescuentoGeneral = async (): Promise<number> => {
