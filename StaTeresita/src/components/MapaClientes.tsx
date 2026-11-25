@@ -5,11 +5,9 @@
 import { Palette } from "@/constants/palette";
 import { Ionicons } from "@expo/vector-icons";
 import { clp } from "@/lib/format";
-import { alCambiarConexion, hayConexion } from "@/lib/offline/red";
-import { Paths } from "expo-file-system";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Platform, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
+import { useCallback, useEffect, useRef } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import MapView, { Marker, Polyline } from "react-native-maps";
 import {
   CENTRO_INICIAL,
   colorDe,
@@ -18,12 +16,9 @@ import {
   titulo,
 } from "./mapaClientes.types";
 
-// Mapa de OpenStreetMap con sus cuadros guardados en el teléfono: sin señal se ven los que ya se cargaron antes
-// (no se descargan zonas completas por adelantado).
-const CARPETA_TILES = (() => {
-  try { return `${Paths.cache.uri.replace(/\/?$/, "/")}tiles`; } catch { return undefined; }
-})();
-
+// Mapa base: Google Maps en Android y Apple Maps en iPhone. Sin señal se ven las zonas que el teléfono
+// ya tenía guardadas de antes (el propio mapa las guarda); los puntos y la ruta salen de lo guardado por la app.
+// (No se usan los cuadros de tile.openstreetmap.org: su política no permite apps como esta.)
 export default function MapaClientes({
   ubicaciones,
   onPressCliente,
@@ -40,8 +35,6 @@ export default function MapaClientes({
   norte,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
-  const [enLinea, setEnLinea] = useState(hayConexion());
-  useEffect(() => alCambiarConexion(setEnLinea), []);
   const siguiendo = !!seguirme && !!navegacion;
 
   // Seguirme: la cámara va a mi posición, gira según mi rumbo, algo inclinada y a zoom de calle
@@ -102,7 +95,6 @@ export default function MapaClientes({
     <MapView
       ref={mapRef}
       style={styles.map}
-      mapType={Platform.OS === "android" ? "none" : "standard"}
       initialRegion={{
         latitude: CENTRO_INICIAL.latitud,
         longitude: CENTRO_INICIAL.longitud,
@@ -122,15 +114,6 @@ export default function MapaClientes({
         );
       }}
     >
-      <UrlTile
-        urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maximumZ={19}
-        tileCachePath={CARPETA_TILES}
-        tileCacheMaxAge={60 * 60 * 24 * 30}
-        offlineMode={!enLinea}
-        shouldReplaceMapContent
-        zIndex={-1}
-      />
       {trazarRuta && ((trazado?.length ?? 0) > 1 || ubicaciones.length > 1) && (
         <Polyline
           coordinates={(trazado && trazado.length > 1 ? trazado : ubicaciones).map((u) => ({ latitude: u.latitud, longitude: u.longitud }))}
