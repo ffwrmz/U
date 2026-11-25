@@ -1,3 +1,5 @@
+import QuienLoHizo from '@/components/QuienLoHizo'
+import { esGerente } from '@/lib/roles'
 import { hayConexion } from '@/lib/offline/red'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -26,6 +28,16 @@ const RegistrarPago = () => {
   const [ventaSeleccionada, setVentaSeleccionada] = useState<VentaPendiente | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
   const [cargandoVentas, setCargandoVentas] = useState(true)
+  // Gerente: cobro a nombre de otro trabajador
+  const [soyGerente, setSoyGerente] = useState(false)
+  const [cobrador, setCobrador] = useState<string | null>(null)
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data.user) return
+      const { data: p } = await supabase.from('perfiles').select('rol').eq('id', data.user.id).single()
+      setSoyGerente(esGerente(p?.rol))
+    })
+  }, [])
   
 
   // Función para agregar el separador de miles automáticamente
@@ -94,6 +106,7 @@ const RegistrarPago = () => {
         p_monto: abono,
         p_metodo: 'efectivo',
         p_venta_id: ventaSeleccionada.id,
+        ...(cobrador ? { p_vendedor: cobrador } : {}),
       })
 
       if (pagoError) throw pagoError
@@ -121,6 +134,8 @@ const RegistrarPago = () => {
           </Text>
           <Ionicons name="chevron-down" size={20} color={Palette.textMuted} />
         </Pressable>
+
+        {soyGerente && <QuienLoHizo titulo="¿Quién hizo el cobro?" valor={cobrador} onCambiar={setCobrador} />}
 
         <Text style={styles.label}>Monto a Abonar</Text>
         <View style={styles.inputContainer}>

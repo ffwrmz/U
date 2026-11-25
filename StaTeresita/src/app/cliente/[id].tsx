@@ -1,5 +1,6 @@
 import EstadoCorrecciones from '@/components/EstadoCorrecciones'
 import Header from '@/components/Header'
+import QuienLoHizo from '@/components/QuienLoHizo'
 import PedirCorreccion, { ObjetivoCorreccion } from '@/components/PedirCorreccion'
 import ProximasVisitas from '@/components/ProximasVisitas'
 import SelectorDireccion from '@/components/SelectorDireccion'
@@ -62,6 +63,7 @@ const HistorialCliente = () => {
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [guardando, setGuardando] = useState(false)
   const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
+  const [cobrador, setCobrador] = useState<string | null>(null) // gerente: cobro a nombre de otro trabajador
 
   // Editar datos del cliente (solo el gerente)
   const [soyGerente, setSoyGerente] = useState(false)
@@ -146,9 +148,10 @@ const HistorialCliente = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
       // La base reparte el abono FIFO (o lo aplica a la compra elegida) en una sola transacción
-      const { error } = await supabase.rpc('registrar_pago', destino
-        ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id }
-        : { p_monto: abono, p_metodo: metodo, p_cliente_id: id })
+      const { error } = await supabase.rpc('registrar_pago', {
+        ...(destino ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id } : { p_monto: abono, p_metodo: metodo, p_cliente_id: id }),
+        ...(cobrador ? { p_vendedor: cobrador } : {}),
+      })
       if (error) throw error
       setModalPago(false)
       Alert.alert('Éxito', hayConexion() ? 'Pago registrado' : 'Pago guardado sin conexión. Se subirá solo cuando vuelva la señal.')
@@ -412,6 +415,8 @@ const HistorialCliente = () => {
               <TextInput style={styles.inputMonto} value={monto} onChangeText={(t) => setMonto(miles(t))} keyboardType="numeric"
                 placeholder="0" placeholderTextColor={Palette.textFaint} />
             </View>
+
+            {soyGerente && <QuienLoHizo titulo="¿Quién hizo el cobro?" valor={cobrador} onCambiar={setCobrador} />}
 
             <Text style={styles.label}>Forma de pago</Text>
             <View style={styles.metodos}>

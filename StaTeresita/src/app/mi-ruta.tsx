@@ -149,6 +149,7 @@ const MiRuta = () => {
                   <Pressable style={{ flex: 1, gap: 3 }} disabled={!c}
                     onPress={() => c && router.push({ pathname: '/cliente/[id]', params: { id: c.id } } as any)}>
                     <Text style={styles.nombre} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                    {p.fuera_de_ruta && <Text style={styles.fueraRuta}>Fuera de ruta</Text>}
                     {c && <DireccionCliente c={c} />}
                   </Pressable>
                   {c && tieneWhatsapp(c.telefono) ? (
@@ -209,6 +210,7 @@ const MiRuta = () => {
 }
 
 const styles = StyleSheet.create({
+  fueraRuta: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '800', color: Palette.lilac, backgroundColor: Palette.lilacSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 16, gap: 10, paddingBottom: 40 },
   resumen: { backgroundColor: Palette.navy, borderRadius: 18, padding: 16 },

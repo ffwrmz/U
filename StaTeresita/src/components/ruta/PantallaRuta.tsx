@@ -720,6 +720,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={styles.nombreFila}>
                         <Text style={[styles.nombre, { flex: 1 }]} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                        {p.fuera_de_ruta && <Text style={styles.fueraRuta}>Fuera de ruta</Text>}
                         {auto ? (
                           <Text style={styles.dist}>{textoDistancia(auto.distancia)} · {textoDuracion(auto.duracion)}</Text>
                         ) : dist != null ? (
@@ -876,6 +877,7 @@ const styles = StyleSheet.create({
   botonMapa: { width: 40, height: 40, borderRadius: 20, backgroundColor: Palette.mapaVelo, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Palette.border, shadowColor: Palette.shadow, shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   botonMapaOn: { backgroundColor: Palette.navy, borderColor: Palette.navy },
   norteText: { fontSize: 14, fontWeight: '900', color: Palette.navy },
+  fueraRuta: { fontSize: 11, fontWeight: '800', color: Palette.lilac, backgroundColor: Palette.lilacSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   reorganizar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   reorganizarText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   pie: { padding: 12, borderTopWidth: 1, borderTopColor: Palette.border, backgroundColor: Palette.cream },

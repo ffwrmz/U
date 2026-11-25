@@ -1,6 +1,7 @@
 import { DESCUENTO_POR_DEFECTO, miLimiteDescuento, Permisos, permisosDe } from '@/lib/ajustes'
 import { hayConexion } from '@/lib/offline/red'
 import Header from '@/components/Header'
+import QuienLoHizo from '@/components/QuienLoHizo'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
@@ -43,6 +44,9 @@ const RegistrarVenta = () => {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
+  const [todasUbic, setTodasUbic] = useState<Ubicacion[]>([])
+  // Gerente: venta a nombre de otro trabajador (sale del furgón de ese trabajador)
+  const [vendedor, setVendedor] = useState<string | null>(null)
   const [sinFurgon, setSinFurgon] = useState(false) // casero sin furgón asignado: no puede vender
   const [stock, setStock] = useState<StockFila[]>([])
   const [aprobadas, setAprobadas] = useState<Solicitud[]>([])
@@ -107,6 +111,7 @@ const RegistrarVenta = () => {
     // Un casero sin furgón asignado no puede vender (ni de bodega ni de otros furgones)
     setSinFurgon(!gerente && !propia)
     setUbicaciones(propia ? [propia] : gerente ? ubic : [])
+    setTodasUbic(ubic)
     setStock((st.data as StockFila[]) || [])
     setAprobadas((sol.data as Solicitud[]) || [])
     // Por defecto: el furgón asignado al usuario; si no tiene, la bodega (gerente) o el primer furgón
@@ -200,6 +205,7 @@ const RegistrarVenta = () => {
       p_descuento_tipo: descuento > 0 ? descTipo : 'ninguno',
       p_descuento_valor: descuento > 0 ? valorDesc : 0,
       p_solicitud: excedeLimite && solicitudQueCubre ? solicitudQueCubre.id : null,
+      ...(vendedor ? { p_vendedor: vendedor } : {}),
       // Solo para la app sin conexión (no se envían a Supabase): total y texto para mostrarla mientras se sube
       _total: total,
       _descripcion: `${lineas.map((l) => `${l.cantidad} × ${l.producto.nombre}`).join(', ')} · ${cliente.nombre}`,
@@ -235,6 +241,20 @@ const RegistrarVenta = () => {
             <Text style={[styles.selectorText, !cliente && { color: Palette.textFaint }]}>{cliente ? cliente.nombre : 'Seleccionar cliente...'}</Text>
             <Ionicons name="chevron-down" size={20} color={Palette.textMuted} />
           </Pressable>
+
+          {soyGerente && (
+            <QuienLoHizo titulo="¿Quién hizo la venta?" valor={vendedor} onCambiar={(t) => {
+              setVendedor(t)
+              setLineas([])
+              if (!t) { setUbicaciones(todasUbic); return }
+              const suFurgon = todasUbic.find((u) => u.tipo === 'furgon' && u.responsable_id === t)
+              setUbicaciones(suFurgon ? [suFurgon] : [])
+              setUbicacionId(suFurgon?.id ?? null)
+            }} />
+          )}
+          {soyGerente && !!vendedor && ubicaciones.length === 0 && (
+            <Text style={styles.error}>Ese trabajador no tiene un furgón asignado; asígnale uno en Inventario para registrar ventas a su nombre.</Text>
+          )}
 
           <Text style={styles.label}>Se vende desde</Text>
           <View style={styles.chips}>

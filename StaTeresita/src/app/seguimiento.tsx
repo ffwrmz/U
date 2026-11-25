@@ -209,7 +209,7 @@ const Seguimiento = () => {
                   onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: p.cliente_id } } as any)}>
                   <Text style={styles.filaHora}>{hora(p.visitado_en)}</Text>
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.filaNombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
+                    <Text style={styles.filaNombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}{p.fuera_de_ruta ? ' · fuera de ruta' : ''}</Text>
                     <Text style={[styles.filaEstado, { color: COLORES[p.estado] }]}>
                       {p.estado === 'visitado' ? 'Estaba' : 'No estaba'}
                       {cobrado > 0 ? ` · cobró ${clp(cobrado)}` : ''}{vendido > 0 ? ` · vendió ${clp(vendido)}` : ''}
@@ -224,7 +224,7 @@ const Seguimiento = () => {
               <Pressable key={p.id} style={[styles.fila, { borderLeftColor: COLORES.pendiente }]}
                 onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: p.cliente_id } } as any)}>
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={styles.filaNombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
+                  <Text style={styles.filaNombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}{p.fuera_de_ruta ? ' · fuera de ruta' : ''}</Text>
                   {p.cliente && <DireccionCliente c={p.cliente} compacta />}
                 </View>
               </Pressable>

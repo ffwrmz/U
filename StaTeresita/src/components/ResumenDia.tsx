@@ -170,7 +170,7 @@ const ResumenDia = ({ fecha }: { fecha: string }) => {
                   return (
                     <Pressable key={p.id} style={styles.fila} onPress={() => abrirCliente(p.cliente_id)}>
                       <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={styles.cliente} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
+                        <Text style={styles.cliente} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}{p.fuera_de_ruta ? ' · fuera de ruta' : ''}</Text>
                         {(pagado > 0 || vendido > 0) && (
                           <Text style={styles.detalle}>{[pagado > 0 && `Pagó ${clp(pagado)}`, vendido > 0 && `Compró ${clp(vendido)}`].filter(Boolean).join(' · ')}</Text>
                         )}
