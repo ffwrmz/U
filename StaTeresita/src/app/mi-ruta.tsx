@@ -141,7 +141,7 @@ const MiRuta = () => {
             const c = p.cliente
             const ocupado = marcando === p.id
             return (
-              <View style={[styles.card, p.estado !== 'pendiente' && { opacity: 0.85 }]}>
+              <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: p.estado === 'visitado' ? Palette.green : p.estado === 'no_estaba' ? Palette.amber : Palette.navy }, p.estado !== 'pendiente' && { opacity: 0.85 }]}>
                 <View style={styles.cardTop}>
                   <View style={[styles.numero, { backgroundColor: e.fondo }]}>
                     <Text style={[styles.numeroText, { color: e.color }]}>{index + 1}</Text>

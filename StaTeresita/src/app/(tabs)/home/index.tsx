@@ -16,6 +16,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+// Color de cada acceso rápido: fondo suave y círculo del ícono en el color fuerte
+const COLOR_ACCESO = {
+  navy: { color: Palette.navy, fondo: Palette.navySoft },
+  sky: { color: Palette.sky, fondo: Palette.skySoft },
+  green: { color: Palette.green, fondo: Palette.greenSoft },
+  orange: { color: Palette.orange, fondo: Palette.orangeSoft, texto: Palette.orangeDark },
+  lilac: { color: Palette.lilac, fondo: Palette.lilacSoft },
+  teal: { color: Palette.teal, fondo: Palette.tealSoft },
+}
+
 const MODO_PRUEBAS = __DEV__ || process.env.EXPO_PUBLIC_MODO_PRUEBAS === '1'
 
 interface ClienteFila {
@@ -241,25 +251,26 @@ const HomeScreen = () => {
 
           <View style={styles.quickRow}>
             {([
-              // Mismo estilo para todos (azul marino); el dinero en verde
-              { t: 'Nuevo cliente', i: 'person-add-outline', ruta: '../registrar-cliente', ver: soyGerente || permisos.puede_crear_clientes },
-              { t: 'Registrar venta', i: 'cart-outline', ruta: '../registrar-venta', ver: soyGerente || permisos.puede_vender },
-              { t: 'Clientes', i: 'people-outline', ruta: '../clientes', ver: true },
+              // Un color por tema: ventas y clientes (azul), dinero (verde), ruta y calendario (naranja), gestión (lila, celeste, turquesa)
+              { t: 'Nuevo cliente', i: 'person-add-outline', c: 'sky', ruta: '../registrar-cliente', ver: soyGerente || permisos.puede_crear_clientes },
+              { t: 'Registrar venta', i: 'cart-outline', c: 'navy', ruta: '../registrar-venta', ver: soyGerente || permisos.puede_vender },
+              { t: 'Clientes', i: 'people-outline', c: 'sky', ruta: '../clientes', ver: true },
               // Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente)
-              { t: 'Registrar pago', i: 'cash-outline', ruta: '../registrar-pago', ver: !soyGerente && permisos.puede_cobrar, dinero: true },
-              { t: 'Historial', i: 'receipt-outline', ruta: '../ver-historial', ver: esDueno, dinero: true },
-              { t: 'Calendario', i: 'calendar-outline', ruta: '../calendario', ver: esDueno },
-              { t: 'Seguimiento', i: 'navigate-circle-outline', ruta: '../seguimiento', ver: esDueno },
-              { t: 'Trabajadores', i: 'people', ruta: '../trabajadores', ver: !!rolUsuario }, // el casero ve a sus compañeros con WhatsApp
-              { t: 'Zonas', i: 'map-outline', ruta: '../zonas', ver: esDueno },
-              { t: 'Descuentos', i: 'pricetag-outline', ruta: '../solicitudes-descuento', ver: esDueno },
-              { t: 'Ajustes', i: 'settings-outline', ruta: '../ajustes', ver: esDueno },
-            ] as { t: string; i: keyof typeof Ionicons.glyphMap; ruta: string; ver: boolean; dinero?: boolean }[]).filter((a) => a.ver).map((a) => (
-              <Pressable key={a.t} style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]} onPress={() => router.push(a.ruta as any)}>
-                <View style={[styles.quickIcon, { backgroundColor: a.dinero ? Palette.greenSoft : Palette.navySoft }]}>
-                  <Ionicons name={a.i} size={24} color={a.dinero ? Palette.green : Palette.navy} />
+              { t: 'Registrar pago', i: 'cash-outline', c: 'green', ruta: '../registrar-pago', ver: !soyGerente && permisos.puede_cobrar },
+              { t: 'Historial', i: 'receipt-outline', c: 'green', ruta: '../ver-historial', ver: esDueno },
+              { t: 'Calendario', i: 'calendar-outline', c: 'orange', ruta: '../calendario', ver: esDueno },
+              { t: 'Seguimiento', i: 'navigate-circle-outline', c: 'orange', ruta: '../seguimiento', ver: esDueno },
+              { t: 'Trabajadores', i: 'people', c: 'lilac', ruta: '../trabajadores', ver: !!rolUsuario }, // el casero ve a sus compañeros con WhatsApp
+              { t: 'Zonas', i: 'map-outline', c: 'teal', ruta: '../zonas', ver: esDueno },
+              { t: 'Descuentos', i: 'pricetag-outline', c: 'lilac', ruta: '../solicitudes-descuento', ver: esDueno },
+              { t: 'Ajustes', i: 'settings-outline', c: 'teal', ruta: '../ajustes', ver: esDueno },
+            ] as { t: string; i: keyof typeof Ionicons.glyphMap; c: keyof typeof COLOR_ACCESO; ruta: string; ver: boolean }[]).filter((a) => a.ver).map((a) => (
+              <Pressable key={a.t} style={({ pressed }) => [styles.quick, { backgroundColor: COLOR_ACCESO[a.c].fondo, borderColor: COLOR_ACCESO[a.c].fondo }, pressed && styles.cardPressed]}
+                onPress={() => router.push(a.ruta as any)}>
+                <View style={[styles.quickIcon, { backgroundColor: COLOR_ACCESO[a.c].color }]}>
+                  <Ionicons name={a.i} size={22} color={Palette.onNavy} />
                 </View>
-                <Text style={styles.quickText}>{a.t}</Text>
+                <Text style={[styles.quickText, { color: 'texto' in COLOR_ACCESO[a.c] ? (COLOR_ACCESO[a.c] as any).texto : COLOR_ACCESO[a.c].color }]}>{a.t}</Text>
               </Pressable>
             ))}
 
@@ -335,7 +346,7 @@ const HomeScreen = () => {
           {[...clientes].sort((a, b) => (deudas[b.id] || 0) - (deudas[a.id] || 0) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 5).map((c, i) => {
             const deuda = deudas[c.id] || 0
             return (
-              <View key={c.id} style={styles.clienteRow}>
+              <View key={c.id} style={[styles.clienteRow, { borderLeftWidth: 4, borderLeftColor: deuda > 0 ? Palette.orange : Palette.green }]}>
                 <View style={styles.numero}>
                   <Text style={styles.numeroText}>{i + 1}</Text>
                 </View>
@@ -447,7 +458,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: Palette.textMuted,
+    color: Palette.navy,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },

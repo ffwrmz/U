@@ -10,7 +10,7 @@ export const Palette = {
 
   // Fondos y superficies
   cream: '#F6F3EA',
-  card: '#FFFFFF',
+  card: '#FFFDF8', // tarjetas: blanco cálido sobre el fondo crema
   border: '#E7E3D6',
   inputFill: '#EFEDE4',
 
@@ -27,6 +27,16 @@ export const Palette = {
   yellow: '#F5C518', // puntos de clientes con deuda en el mapa (con borde oscuro)
   yellowBorder: '#7A5A00',
   grayPill: '#ECEBE5',
+
+  // Colores de los accesos rápidos (fondo suave + ícono)
+  orangeSoft: '#FDE6D8',
+  orangeDark: '#A8430A', // texto naranja legible sobre fondo naranja suave
+  sky: '#1F5F99',
+  skySoft: '#DDEBF8',
+  lilac: '#5B3FA0',
+  lilacSoft: '#ECE5F8',
+  teal: '#0F6E6E',
+  tealSoft: '#D9F1EF',
 
   // Sobre fondo azul marino
   onNavy: '#FFFFFF',
