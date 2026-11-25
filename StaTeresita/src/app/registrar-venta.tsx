@@ -1,3 +1,4 @@
+import { clientesPermitidosHoy } from '@/lib/permitidos'
 import { DESCUENTO_POR_DEFECTO, miLimiteDescuento, Permisos, permisosDe } from '@/lib/ajustes'
 import { hayConexion } from '@/lib/offline/red'
 import Header from '@/components/Header'
@@ -98,7 +99,8 @@ const RegistrarVenta = () => {
     ])
     const error = cs.error || ps.error || us.error || st.error
     setErrorCarga(error ? error.message : null)
-    const listaClientes = (cs.data as Cliente[]) || []
+    const permitidos = await clientesPermitidosHoy()
+    const listaClientes = ((cs.data as Cliente[]) || []).filter((c) => !permitidos || permitidos.has(c.id))
     setClientes(listaClientes)
     if (clienteId) {
       const elegido = listaClientes.find((c) => c.id === clienteId)
@@ -402,7 +404,7 @@ const RegistrarVenta = () => {
             data={clientes}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: 16 }}
-            ListEmptyComponent={<Text style={styles.vacio}>No hay clientes registrados.</Text>}
+            ListEmptyComponent={<Text style={styles.vacio}>{soyGerente ? 'No hay clientes registrados.' : 'No tienes clientes en tu ruta de hoy. El gerente te los asigna.'}</Text>}
             renderItem={({ item }) => (
               <Pressable style={styles.opcion} onPress={() => { setCliente(item); setModalCliente(false) }}>
                 <Text style={styles.opcionTexto}>{item.nombre}</Text>

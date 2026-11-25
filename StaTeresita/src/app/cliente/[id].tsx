@@ -8,6 +8,7 @@ import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
 import { hayConexion } from '@/lib/offline/red'
+import { clientesPermitidosHoy } from '@/lib/permitidos'
 import { esGerente } from '@/lib/roles'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -64,6 +65,9 @@ const HistorialCliente = () => {
   const [guardando, setGuardando] = useState(false)
   const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
   const [cobrador, setCobrador] = useState<string | null>(null) // gerente: cobro a nombre de otro trabajador
+  // Casero: solo vende y cobra a clientes de su ruta de hoy (o que registró hoy)
+  const [permitido, setPermitido] = useState(true)
+  useEffect(() => { clientesPermitidosHoy().then((s) => setPermitido(!s || s.has(String(id)))) }, [id])
 
   // Editar datos del cliente (solo el gerente)
   const [soyGerente, setSoyGerente] = useState(false)
@@ -292,6 +296,10 @@ const HistorialCliente = () => {
             </View>
           </View>
 
+          {!permitido && (
+            <Text style={styles.noAsignado}>Este cliente no está en tu ruta de hoy. Para venderle o cobrarle, pídele al gerente que te lo asigne.</Text>
+          )}
+          {permitido && (
           <View style={styles.accionesFila}>
             <Pressable
               style={({ pressed }) => [styles.accion, { backgroundColor: Palette.navy }, pressed && { opacity: 0.85 }]}
@@ -309,6 +317,7 @@ const HistorialCliente = () => {
               <Text style={[styles.accionText, deuda <= 0 && { color: Palette.textFaint }]}>{deuda > 0 ? 'Agregar pago' : 'Sin deuda'}</Text>
             </Pressable>
           </View>
+          )}
 
           <Text style={styles.seccion}>Compras ({ventas.length})</Text>
           {ventas.length === 0 && <Text style={styles.vacio}>Este cliente aún no tiene compras.</Text>}
@@ -338,7 +347,7 @@ const HistorialCliente = () => {
                   <View style={[styles.desplegado, { backgroundColor: d.fondo }]}>
                     <Text style={styles.bannerSub}>Pagado {clp(d.pagado)} de {clp(d.total)} · {Math.round(d.pct * 100)}%</Text>
 
-                    {!d.anulada && !d.pagada && (
+                    {permitido && !d.anulada && !d.pagada && (
                       <Pressable style={styles.botonAbonar} onPress={() => abrirPago(v)}>
                         <Ionicons name="add-circle-outline" size={16} color={Palette.onNavy} />
                         <Text style={styles.botonAbonarText}>Abonar a esta compra</Text>
@@ -480,6 +489,7 @@ const Dato = ({ icono, texto }: { icono: keyof typeof Ionicons.glyphMap; texto: 
 )
 
 const styles = StyleSheet.create({
+  noAsignado: { fontSize: 13, fontWeight: '700', color: Palette.amber, backgroundColor: Palette.amberSoft, borderRadius: 12, padding: 12 },
   itemFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   itemFilaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.text },
   corregir: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },

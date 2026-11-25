@@ -1,3 +1,4 @@
+import { clientesPermitidosHoy } from '@/lib/permitidos'
 import QuienLoHizo from '@/components/QuienLoHizo'
 import { esGerente } from '@/lib/roles'
 import { hayConexion } from '@/lib/offline/red'
@@ -69,7 +70,9 @@ const RegistrarPago = () => {
         // @ts-ignore
         if (data) {
           // Si venimos desde un cliente de la lista, mostramos solo sus deudas
-          const lista = clienteId ? (data as any[]).filter((v) => v.cliente_id === clienteId) : (data as any[])
+          const permitidos = await clientesPermitidosHoy()
+          const lista = (clienteId ? (data as any[]).filter((v) => v.cliente_id === clienteId) : (data as any[]))
+            .filter((v) => !permitidos || permitidos.has(v.cliente_id))
           setVentasPendientes(lista)
           if (clienteId && lista.length === 1) setVentaSeleccionada(lista[0])
         }

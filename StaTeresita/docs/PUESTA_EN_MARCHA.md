@@ -14,6 +14,7 @@ Pegar y correr en **Supabase > SQL Editor** (en este orden) los archivos que aú
 5. `supabase/migrations/20261124210000_normalizar_rut.sql`
 6. `supabase/migrations/20261125020000_ajustes_permisos.sql`
 7. `supabase/migrations/20261125040000_fuera_de_ruta_inventario.sql`
+8. `supabase/migrations/20261125200000_venta_solo_asignados.sql`
 
 Funciones (Edge Functions) en **Supabase > Edge Functions**:
 
