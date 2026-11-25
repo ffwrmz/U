@@ -1,4 +1,5 @@
 import Header from '@/components/Header'
+import SolicitudesDescuento from '@/components/SolicitudesDescuento'
 import SolicitudesInventario from '@/components/SolicitudesInventario'
 import { Palette } from '@/constants/palette'
 import { cambiosDe, Correccion, escucharCorrecciones, ESTADO_TEXTO, listarCorrecciones, resolverCorreccion, TITULO_TIPO } from '@/lib/correcciones'
@@ -13,9 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 // Solicitudes de corrección (gerente): lo que pidieron corregir los caseros, con Aprobar / Rechazar.
 // Al aprobar, la base aplica el cambio (pago, producto vendido con su stock, o datos del cliente).
 const Solicitudes = () => {
-  // Dos tipos de solicitudes de los caseros: corrección de datos e inventario del furgón
+  // Tres tipos de solicitudes de los caseros: corrección de datos, descuentos e inventario del furgón
   const { tab } = useLocalSearchParams<{ tab?: string }>()
-  const [seccion, setSeccion] = useState<'correcciones' | 'inventario'>(tab === 'inventario' ? 'inventario' : 'correcciones')
+  const [seccion, setSeccion] = useState<'correcciones' | 'descuentos' | 'inventario'>(tab === 'inventario' ? 'inventario' : tab === 'descuentos' ? 'descuentos' : 'correcciones')
   const router = useRouter()
   const [pestana, setPestana] = useState<'pendiente' | 'resueltas'>('pendiente')
   const [lista, setLista] = useState<Correccion[]>([])
@@ -63,13 +64,13 @@ const Solicitudes = () => {
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <Header title="Solicitudes" subtitle="Lo que pidieron los caseros" />
       <View style={styles.secciones}>
-        {([['correcciones', 'Correcciones'], ['inventario', 'Inventario']] as const).map(([k, t]) => (
+        {([['correcciones', 'Correcciones'], ['descuentos', 'Descuentos'], ['inventario', 'Inventario']] as const).map(([k, t]) => (
           <Pressable key={k} style={[styles.seccionBtn, seccion === k && styles.seccionSel]} onPress={() => setSeccion(k)}>
             <Text style={[styles.seccionText, seccion === k && { color: Palette.navy }]}>{t}</Text>
           </Pressable>
         ))}
       </View>
-      {seccion === 'inventario' ? <SolicitudesInventario /> : (
+      {seccion === 'inventario' ? <SolicitudesInventario /> : seccion === 'descuentos' ? <SolicitudesDescuento /> : (
       <>
       <View style={styles.tabs}>
         {(['pendiente', 'resueltas'] as const).map((t) => (
