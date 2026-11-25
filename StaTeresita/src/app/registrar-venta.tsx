@@ -1,3 +1,4 @@
+import { DESCUENTO_POR_DEFECTO, miLimiteDescuento } from '@/lib/ajustes'
 import { hayConexion } from '@/lib/offline/red'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
@@ -17,7 +18,6 @@ interface StockFila { ubicacion_id: string; producto_id: string; cantidad: numbe
 interface Solicitud { id: string; producto_id: string; tipo: 'porcentaje' | 'monto'; valor: number; estado: string }
 interface Linea { producto: Producto; cantidad: number; tipo: 'porcentaje' | 'monto'; valor: string; solicitudId?: string | null }
 
-const LIMITE_CASERO = 10
 
 const numero = (t: string) => parseInt(t.replace(/\D/g, ''), 10) || 0
 const detalle = (p: Producto) => [p.marca, p.especificacion].filter(Boolean).join(' · ')
@@ -44,6 +44,9 @@ const RegistrarVenta = () => {
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [soyGerente, setSoyGerente] = useState(false)
+  // Descuento máximo sin aprobación (Ajustes: el del casero o el general; 10% por defecto)
+  const [LIMITE_CASERO, setLimite] = useState(DESCUENTO_POR_DEFECTO)
+  useEffect(() => { miLimiteDescuento().then(setLimite) }, [])
   const [userId, setUserId] = useState<string | null>(null)
 
   const [clientes, setClientes] = useState<Cliente[]>([])

@@ -144,7 +144,7 @@ const SesionYAvisos = () => {
 
 const styles = StyleSheet.create({
   capa: { position: 'absolute', left: 12, right: 12, zIndex: 1000, elevation: 20 },
-  aviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.navyDark, borderRadius: 16, padding: 14, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  aviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.navyDark, borderRadius: 16, padding: 14, shadowColor: Palette.shadow, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   titulo: { color: Palette.onNavy, fontSize: 14, fontWeight: '800' },
   cuerpo: { color: Palette.onNavyMuted, fontSize: 13, marginTop: 2 },
 })

@@ -1,5 +1,5 @@
 // Paleta visual de Santa Teresita (azul marino + crema + acento naranja).
-// Archivo independiente de theme.ts para no arrastrar el import de global.css.
+// Todas las pantallas usan estos colores (no poner colores sueltos en los estilos).
 
 export const Palette = {
   // Marca
@@ -32,5 +32,15 @@ export const Palette = {
   onNavy: '#FFFFFF',
   onNavyMuted: 'rgba(255,255,255,0.72)',
   onNavyFill: 'rgba(255,255,255,0.14)',
+  onNavyBorder: 'rgba(255,255,255,0.20)',
+
+  // Otros
+  navyDisabled: '#8C90B5', // botón azul desactivado
+  overlay: 'rgba(0,0,0,0.38)', // fondo oscuro detrás de una ventana
+  shadow: '#000000',
+  white: '#FFFFFF',
+  ubicacion: '#2F80ED', // "tú estás aquí" en el mapa
+  ubicacionHalo: 'rgba(47,128,237,0.25)',
+  mapaVelo: 'rgba(255,255,255,0.92)', // aviso sobre el mapa
 } as const
 

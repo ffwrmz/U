@@ -6,6 +6,7 @@ import MapaClientes from '@/components/MapaClientes'
 import { ubicacionesDeClientes } from '@/lib/mapa'
 import { ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { contarPendientes, escucharCorrecciones } from '@/lib/correcciones'
+import { Permisos, permisosDe } from '@/lib/ajustes'
 import { contarNoLeidas, escucharNotificaciones } from '@/lib/notificaciones'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -40,6 +41,8 @@ const HomeScreen = () => {
   const [misClientes, setMisClientes] = useState<string[]>([])
   const [vistaMapa, setVistaMapa] = useState<'todos' | 'asignados'>('todos')
   const soyGerente = esGerente(rolUsuario)
+  // Permisos del trabajador (Ajustes): ocultan los accesos que no puede usar
+  const [permisos, setPermisos] = useState<Permisos>(permisosDe(null))
   // Solicitudes de corrección pendientes (campana del gerente; en tiempo real y al volver a la pantalla)
   const [correccionesPendientes, setCorreccionesPendientes] = useState(0)
   const esDueno = rolUsuario === 'dueno'
@@ -67,12 +70,13 @@ const HomeScreen = () => {
       if (user) {
         const { data } = await supabase
           .from('perfiles')
-          .select('rol, nombre')
+          .select('*')
           .eq('id', user.id)
           .single();
         
         if (data) {
           setRolUsuario(data.rol);
+          setPermisos(permisosDe(data));
           setNombreUsuario((data as any).nombre ?? null);
         }
       }
@@ -152,8 +156,9 @@ const HomeScreen = () => {
                   <View style={styles.badge}><Text style={styles.badgeText}>{noLeidas > 99 ? '99+' : noLeidas}</Text></View>
                 )}
               </Pressable>
-              <Pressable onPress={async () => { await supabase.auth.signOut(); router.replace('/') }} style={styles.iconButton} accessibilityLabel="Cerrar sesión">
-                <Ionicons name="log-out-outline" size={22} color={Palette.onNavy} />
+              <Pressable onPress={async () => { await supabase.auth.signOut(); router.replace('/') }} style={styles.salir} accessibilityLabel="Cerrar sesión">
+                <Ionicons name="log-out-outline" size={18} color={Palette.onNavy} />
+                <Text style={styles.salirText}>Salir</Text>
               </Pressable>
             </View>
           </View>
@@ -235,63 +240,32 @@ const HomeScreen = () => {
           <Text style={styles.sectionTitle}>Accesos rápidos</Text>
 
           <View style={styles.quickRow}>
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-cliente')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="person-add-outline" size={24} color={Palette.navy} />
-              </View>
-              <Text style={styles.quickText}>Nuevo cliente</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-venta')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="cart-outline" size={24} color={Palette.navy} />
-              </View>
-              <Text style={styles.quickText}>Registrar venta</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../clientes')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="people-outline" size={24} color={Palette.navy} />
-              </View>
-              <Text style={styles.quickText}>Clientes</Text>
-            </Pressable>
-
-            {/* Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente) */}
-            {!soyGerente && (
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-pago')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
-                <Ionicons name="cash-outline" size={24} color={Palette.green} />
-              </View>
-              <Text style={styles.quickText}>Registrar pago</Text>
-            </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../ver-historial')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
-                  <Ionicons name="time-outline" size={24} color={Palette.orange} />
+            {([
+              // Mismo estilo para todos (azul marino); el dinero en verde
+              { t: 'Nuevo cliente', i: 'person-add-outline', ruta: '../registrar-cliente', ver: soyGerente || permisos.puede_crear_clientes },
+              { t: 'Registrar venta', i: 'cart-outline', ruta: '../registrar-venta', ver: soyGerente || permisos.puede_vender },
+              { t: 'Clientes', i: 'people-outline', ruta: '../clientes', ver: true },
+              // Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente)
+              { t: 'Registrar pago', i: 'cash-outline', ruta: '../registrar-pago', ver: !soyGerente && permisos.puede_cobrar, dinero: true },
+              { t: 'Equipo', i: 'logo-whatsapp', ruta: '../equipo', ver: !!rolUsuario },
+              { t: 'Historial', i: 'receipt-outline', ruta: '../ver-historial', ver: esDueno, dinero: true },
+              { t: 'Calendario', i: 'calendar-outline', ruta: '../calendario', ver: esDueno },
+              { t: 'Seguimiento', i: 'navigate-circle-outline', ruta: '../seguimiento', ver: esDueno },
+              { t: 'Trabajadores', i: 'people', ruta: '../trabajadores', ver: esDueno },
+              { t: 'Zonas', i: 'map-outline', ruta: '../zonas', ver: esDueno },
+              { t: 'Descuentos', i: 'pricetag-outline', ruta: '../solicitudes-descuento', ver: esDueno },
+              { t: 'Ajustes', i: 'settings-outline', ruta: '../ajustes', ver: esDueno },
+            ] as { t: string; i: keyof typeof Ionicons.glyphMap; ruta: string; ver: boolean; dinero?: boolean }[]).filter((a) => a.ver).map((a) => (
+              <Pressable key={a.t} style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]} onPress={() => router.push(a.ruta as any)}>
+                <View style={[styles.quickIcon, { backgroundColor: a.dinero ? Palette.greenSoft : Palette.navySoft }]}>
+                  <Ionicons name={a.i} size={24} color={a.dinero ? Palette.green : Palette.navy} />
                 </View>
-                <Text style={styles.quickText}>Historial</Text>
+                <Text style={styles.quickText}>{a.t}</Text>
               </Pressable>
-            )}
+            ))}
 
             {/* Solo para pruebas: en la app instalada no aparece, salvo con EXPO_PUBLIC_MODO_PRUEBAS=1 */}
-            {MODO_PRUEBAS && rolUsuario === 'dueno' && (
+            {MODO_PRUEBAS && esDueno && (
               <Pressable
                 style={({ pressed }) => [styles.quick, { borderColor: Palette.orange, borderStyle: 'dashed', borderWidth: 1.5 }, pressed && styles.cardPressed]}
                 onPress={() => reiniciarDia(jornada?.id, () => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) })}
@@ -300,66 +274,6 @@ const HomeScreen = () => {
                   <Ionicons name="bug-outline" size={24} color={Palette.orange} />
                 </View>
                 <Text style={styles.quickText}>Depuración del día</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../calendario')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
-                  <Ionicons name="calendar-outline" size={24} color={Palette.orange} />
-                </View>
-                <Text style={styles.quickText}>Calendario</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../seguimiento')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="navigate-circle-outline" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Seguimiento</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../trabajadores')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="people" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Trabajadores</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../zonas')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
-                  <Ionicons name="map-outline" size={24} color={Palette.green} />
-                </View>
-                <Text style={styles.quickText}>Zonas</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../solicitudes-descuento')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="pricetag-outline" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Descuentos</Text>
               </Pressable>
             )}
           </View>
@@ -391,7 +305,7 @@ const HomeScreen = () => {
                 {/* Leyenda: verde al día, amarillo con deuda */}
                 <View style={styles.leyendaMapa}>
                   <View style={styles.leyendaItem}>
-                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.green, borderColor: '#FFFFFF' }]} />
+                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.green, borderColor: Palette.white }]} />
                     <Text style={styles.leyendaText}>{conUbicacion - conDeudaMapa} al día</Text>
                   </View>
                   <View style={styles.leyendaItem}>
@@ -482,6 +396,8 @@ const styles = StyleSheet.create({
   badgeText: { color: Palette.onNavy, fontSize: 10, fontWeight: '800' },
   bannerCorr: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.yellow, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14 },
   bannerCorrText: { flex: 1, fontSize: 14, fontWeight: '800', color: Palette.navy },
+  salir: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 40, borderRadius: 20, paddingHorizontal: 12, backgroundColor: Palette.orange },
+  salirText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
   iconButton: {
     width: 40,
     height: 40,
@@ -509,7 +425,7 @@ const styles = StyleSheet.create({
   gestionRow: { flexDirection: 'row', gap: 10 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   gestionChevron: { position: 'absolute', top: 14, right: 12 },
-  gestionCard: { flex: 1, gap: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)', backgroundColor: Palette.onNavyFill, padding: 14, minHeight: 148 },
+  gestionCard: { flex: 1, gap: 6, borderRadius: 20, borderWidth: 1, borderColor: Palette.onNavyBorder, backgroundColor: Palette.onNavyFill, padding: 14, minHeight: 148 },
   gestionMint: {},
   gestionLila: {},
   gestionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },

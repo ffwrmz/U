@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
   currency: { fontSize: 18, color: Palette.textMuted, marginRight: 8 },
   input: { flex: 1, fontSize: 18, color: Palette.text },
   submitButton: { backgroundColor: Palette.navy, padding: 16, borderRadius: 12, alignItems: 'center' },
-  submitButtonDisabled: { backgroundColor: '#8C90B5' },
+  submitButtonDisabled: { backgroundColor: Palette.navyDisabled },
   submitButtonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Palette.border },

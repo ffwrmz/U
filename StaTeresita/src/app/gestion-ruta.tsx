@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy, flexShrink: 1 },
   filaSeleccion: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   linkText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
-  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.overlay, justifyContent: 'flex-end' },
   hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },
   linkNavy: { fontSize: 13, fontWeight: '800', color: Palette.navy },

@@ -131,7 +131,7 @@ export default function MapaClientes({
         <Marker coordinate={{ latitude: navegacion.latitud, longitude: navegacion.longitud }} anchor={{ x: 0.5, y: 0.5 }}
           flat rotation={navegacion.rumbo ?? 0} zIndex={30} tracksViewChanges={false} title="Tú estás aquí">
           <View style={styles.flecha}>
-            <Ionicons name="navigate" size={20} color="#FFFFFF" style={{ transform: [{ rotate: "-45deg" }] }} />
+            <Ionicons name="navigate" size={20} color={Palette.white} style={{ transform: [{ rotate: "-45deg" }] }} />
           </View>
         </Marker>
       )}
@@ -163,7 +163,7 @@ export default function MapaClientes({
             }
           >
             {estilo === "punto" && !u.etiqueta ? (
-              <View style={[styles.punto, { backgroundColor: colorDe(u, Palette.green, Palette.yellow), borderColor: deuda > 0 ? Palette.yellowBorder : "#FFFFFF" }]} />
+              <View style={[styles.punto, { backgroundColor: colorDe(u, Palette.green, Palette.yellow), borderColor: deuda > 0 ? Palette.yellowBorder : Palette.white }]} />
             ) : u.etiqueta ? (
               <View style={[styles.numero, { backgroundColor: colorDe(u, Palette.green, Palette.amber) }, u.id === seleccionId && styles.numeroSel]}>
                 <Text style={styles.numeroText}>{u.etiqueta}</Text>
@@ -178,10 +178,10 @@ export default function MapaClientes({
 
 const styles = StyleSheet.create({
   map: { width: "100%", height: "100%" },
-  numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF" },
-  numeroText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: Palette.white },
+  numeroText: { color: Palette.white, fontWeight: "800", fontSize: 13 },
   punto: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
-  yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF" },
-  flecha: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: Palette.ubicacion, borderWidth: 3, borderColor: Palette.white },
+  flecha: { width: 34, height: 34, borderRadius: 17, backgroundColor: Palette.ubicacion, borderWidth: 3, borderColor: Palette.white, alignItems: "center", justifyContent: "center" },
   numeroSel: { minWidth: 38, height: 38, borderRadius: 19, borderWidth: 3, borderColor: Palette.orange },
 });
