@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { clp } from "@/lib/format";
 import { useCallback, useEffect, useRef } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { MapStyleElement, Marker, Polyline } from "react-native-maps";
 import {
   CENTRO_INICIAL,
   colorDe,
@@ -17,7 +17,7 @@ import {
 } from "./mapaClientes.types";
 
 // Sin puntos de interés (negocios, farmacias, supermercados, paraderos): solo calles y nuestros clientes
-const SIN_LUGARES = [
+const SIN_LUGARES: MapStyleElement[] = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
 ]
