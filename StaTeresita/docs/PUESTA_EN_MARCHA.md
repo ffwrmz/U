@@ -13,6 +13,7 @@ Pegar y correr en **Supabase > SQL Editor** (en este orden) los archivos que aú
 4. `supabase/migrations/20261124200000_arreglos_pruebas_v13_r08.sql`
 5. `supabase/migrations/20261124210000_normalizar_rut.sql`
 6. `supabase/migrations/20261125020000_ajustes_permisos.sql`
+7. `supabase/migrations/20261125040000_fuera_de_ruta_inventario.sql`
 
 Funciones (Edge Functions) en **Supabase > Edge Functions**:
 

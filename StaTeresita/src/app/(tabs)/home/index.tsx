@@ -255,6 +255,7 @@ const HomeScreen = () => {
               { t: 'Nuevo cliente', i: 'person-add-outline', c: 'sky', ruta: '../registrar-cliente', ver: soyGerente || permisos.puede_crear_clientes },
               { t: 'Registrar venta', i: 'cart-outline', c: 'navy', ruta: '../registrar-venta', ver: soyGerente || permisos.puede_vender },
               { t: 'Clientes', i: 'people-outline', c: 'sky', ruta: '../clientes', ver: true },
+              { t: 'Mi inventario', i: 'cube-outline', c: 'teal', ruta: '../mi-inventario', ver: !!rolUsuario && !soyGerente },
               // Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente)
               { t: 'Registrar pago', i: 'cash-outline', c: 'green', ruta: '../registrar-pago', ver: !soyGerente && permisos.puede_cobrar },
               { t: 'Historial', i: 'receipt-outline', c: 'green', ruta: '../ver-historial', ver: esDueno },
@@ -263,6 +264,7 @@ const HomeScreen = () => {
               { t: 'Trabajadores', i: 'people', c: 'lilac', ruta: '../trabajadores', ver: !!rolUsuario }, // el casero ve a sus compañeros con WhatsApp
               { t: 'Zonas', i: 'map-outline', c: 'teal', ruta: '../zonas', ver: esDueno },
               { t: 'Descuentos', i: 'pricetag-outline', c: 'lilac', ruta: '../solicitudes-descuento', ver: esDueno },
+              { t: 'Solicitudes', i: 'mail-unread-outline', c: 'lilac', ruta: '../solicitudes', ver: esDueno },
               { t: 'Ajustes', i: 'settings-outline', c: 'teal', ruta: '../ajustes', ver: esDueno },
             ] as { t: string; i: keyof typeof Ionicons.glyphMap; c: keyof typeof COLOR_ACCESO; ruta: string; ver: boolean }[]).filter((a) => a.ver).map((a) => (
               <Pressable key={a.t} style={({ pressed }) => [styles.quick, { backgroundColor: COLOR_ACCESO[a.c].fondo, borderColor: COLOR_ACCESO[a.c].fondo }, pressed && styles.cardPressed]}
