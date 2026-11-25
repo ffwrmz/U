@@ -1,3 +1,4 @@
+import { pareja } from '@/lib/furgones'
 import EstadoCorrecciones from '@/components/EstadoCorrecciones'
 import Header from '@/components/Header'
 import QuienLoHizo from '@/components/QuienLoHizo'
@@ -21,7 +22,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 interface Cliente { id: string; nombre: string; rut: string | null; telefono: string | null; direccion: string | null }
-interface Pago { id: string; monto_abonado: number; metodo_pago: string | null; fecha_pago: string | null; creado_en: string | null; cobrador_id: string | null }
+interface Pago { id: string; monto_abonado: number; metodo_pago: string | null; fecha_pago: string | null; creado_en: string | null; cobrador_id: string | null; acompanante_id?: string | null }
 interface Venta {
   id: string
   monto_total: number
@@ -96,7 +97,7 @@ const HistorialCliente = () => {
       const [c, v] = await Promise.all([
         supabase.from('clientes').select('id, nombre, rut, telefono, direccion').eq('id', id).single(),
         supabase.from('ventas_pedidos')
-          .select('id, monto_total, saldo_pendiente, estado_pago, descripcion, fecha_venta, pagos ( id, monto_abonado, metodo_pago, fecha_pago, creado_en, cobrador_id )')
+          .select('id, monto_total, saldo_pendiente, estado_pago, descripcion, fecha_venta, pagos ( * )')
           .eq('cliente_id', id)
           .order('fecha_venta', { ascending: false }),
       ])
@@ -110,7 +111,7 @@ const HistorialCliente = () => {
         if (!li.error) setLineas((li.data as any[]) || [])
       }
       // Nombre de quien cobró cada pago
-      const ids = Array.from(new Set(lista.flatMap((x) => (x.pagos || []).map((p) => p.cobrador_id)).filter(Boolean))) as string[]
+      const ids = Array.from(new Set(lista.flatMap((x) => (x.pagos || []).flatMap((p) => [p.cobrador_id, p.acompanante_id])).filter(Boolean))) as string[]
       if (ids.length > 0) {
         const pe = await supabase.from('perfiles').select('id, nombre').in('id', ids)
         if (!pe.error) setCobradores(Object.fromEntries(((pe.data as any[]) || []).map((x) => [x.id, x.nombre])))
@@ -180,7 +181,7 @@ const HistorialCliente = () => {
     let acumulado = 0
     const filas = pagos.map((p) => {
       acumulado += Number(p.monto_abonado)
-      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
+      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? pareja((x) => (cobradores[x] ?? '').split(' ')[0] || undefined, p.cobrador_id, p.acompanante_id) : '' }
     }).reverse()
     const pagado = Math.max(total - Number(v.saldo_pendiente), 0)
     const pct = total > 0 ? Math.min(pagado / total, 1) : 0
@@ -519,7 +520,7 @@ const styles = StyleSheet.create({
   barra: { height: 8, borderRadius: 4, backgroundColor: Palette.border, overflow: 'hidden' },
   barraRelleno: { height: 8, borderRadius: 4 },
   bannerSub: { fontSize: 12, color: Palette.textMuted },
-  quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 60 },
+  quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 90 },
   botonGuardar: { backgroundColor: Palette.navy, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   botonPagarText: { color: Palette.onNavy, fontSize: 16, fontWeight: '800' },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },

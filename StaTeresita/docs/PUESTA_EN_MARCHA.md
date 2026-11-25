@@ -15,6 +15,9 @@ Pegar y correr en **Supabase > SQL Editor** (en este orden) los archivos que aú
 6. `supabase/migrations/20261125020000_ajustes_permisos.sql`
 7. `supabase/migrations/20261125040000_fuera_de_ruta_inventario.sql`
 8. `supabase/migrations/20261125200000_venta_solo_asignados.sql`
+9. `supabase/migrations/20261125210000_pruebas_furgon_asignado.sql`
+10. `supabase/migrations/20261125220000_pruebas_ajuste_f01_a04.sql`
+11. `supabase/migrations/20261125230000_furgon_dos_trabajadores.sql`
 
 Funciones (Edge Functions) en **Supabase > Edge Functions**:
 

@@ -1,3 +1,4 @@
+import { cargarFurgones, FurgonInfo, furgonDeTrabajador } from '@/lib/furgones'
 import { clientesPermitidosHoy } from '@/lib/permitidos'
 import { DESCUENTO_POR_DEFECTO, miLimiteDescuento, Permisos, permisosDe } from '@/lib/ajustes'
 import { hayConexion } from '@/lib/offline/red'
@@ -46,6 +47,7 @@ const RegistrarVenta = () => {
   const [productos, setProductos] = useState<Producto[]>([])
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
   const [todasUbic, setTodasUbic] = useState<Ubicacion[]>([])
+  const [furgonesInfo, setFurgonesInfo] = useState<FurgonInfo[]>([])
   // Gerente: venta a nombre de otro trabajador (sale del furgón de ese trabajador)
   const [vendedor, setVendedor] = useState<string | null>(null)
   const [sinFurgon, setSinFurgon] = useState(false) // casero sin furgón asignado: no puede vender
@@ -108,8 +110,12 @@ const RegistrarVenta = () => {
     }
     setProductos((ps.data as Producto[]) || [])
     const ubic = (us.data as Ubicacion[]) || []
+    // Furgón de cada trabajador (pueden ir 2 por furgón)
+    const furgones = await cargarFurgones()
+    setFurgonesInfo(furgones)
+    const miFurgonId = furgonDeTrabajador(furgones, user?.id)?.id
     // Quien tiene un furgón asignado solo puede vender lo que lleva ese furgón
-    const propia = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id) : undefined
+    const propia = miFurgonId ? ubic.find((u) => u.id === miFurgonId) : undefined
     // Un casero sin furgón asignado no puede vender (ni de bodega ni de otros furgones)
     setSinFurgon(!gerente && !propia)
     setUbicaciones(propia ? [propia] : gerente ? ubic : [])
@@ -117,7 +123,7 @@ const RegistrarVenta = () => {
     setStock((st.data as StockFila[]) || [])
     setAprobadas((sol.data as Solicitud[]) || [])
     // Por defecto: el furgón asignado al usuario; si no tiene, la bodega (gerente) o el primer furgón
-    const propio = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id)?.id : undefined
+    const propio = propia?.id
     setUbicacionId((actual) => actual ?? propio ?? (gerente ? (ubic.find((u) => u.tipo === 'bodega')?.id ?? ubic[0]?.id) : undefined) ?? null)
     setCargando(false)
   }
@@ -214,7 +220,10 @@ const RegistrarVenta = () => {
     })
     setGuardando(false)
     if (error) { Alert.alert('Error al registrar la venta', error.message); return }
-    Alert.alert('Éxito', hayConexion() ? 'Venta registrada correctamente' : 'Venta guardada sin conexión. Se subirá sola cuando vuelva la señal.')
+    // Quién queda en la venta: el vendedor y su compañero de furgón (si van dos)
+    const f = furgonesInfo.find((x) => x.id === ubicacionId)
+    const quien = f && f.miembros.length > 1 ? ` (${f.nombre}: ${f.miembros.length} trabajadores)` : ''
+    Alert.alert('Éxito', hayConexion() ? `Venta registrada correctamente${quien}` : 'Venta guardada sin conexión. Se subirá sola cuando vuelva la señal.')
     router.back()
   }
 
@@ -249,7 +258,8 @@ const RegistrarVenta = () => {
               setVendedor(t)
               setLineas([])
               if (!t) { setUbicaciones(todasUbic); return }
-              const suFurgon = todasUbic.find((u) => u.tipo === 'furgon' && u.responsable_id === t)
+              const suFurgonId = furgonDeTrabajador(furgonesInfo, t)?.id
+              const suFurgon = todasUbic.find((u) => u.id === suFurgonId)
               setUbicaciones(suFurgon ? [suFurgon] : [])
               setUbicacionId(suFurgon?.id ?? null)
             }} />

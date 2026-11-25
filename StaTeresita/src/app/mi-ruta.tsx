@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaRuta from '@/components/MapaRuta'
@@ -43,10 +44,11 @@ const MiRuta = () => {
       const j = await obtenerOCrearJornadaHoy(false)
       // Con la ruta iniciada se trabaja en la pantalla Ruta en curso (mapa + botones rápidos)
       // La ruta está en curso si la inició el gerente (jornada) o el propio casero (jornada_vendedores)
-      const miEstado = j ? estadoRutaDe(j, await listarEstadosCaseros(j.id), user.id) : undefined
+      const dueñoRuta = await principalDe(user.id) // ruta del equipo del furgón
+      const miEstado = j ? estadoRutaDe(j, await listarEstadosCaseros(j.id), dueñoRuta) : undefined
       if (miEstado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
       setJornada(j)
-      setParadas(j ? await listarParadas(j.id, user.id) : [])
+      setParadas(j ? await listarParadas(j.id, dueñoRuta) : [])
       setError(null)
     } catch (e: any) {
       setError(e.message ?? String(e))

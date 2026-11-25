@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -158,7 +159,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
-      setYo(user.id)
+      // "Mi ruta" = la del equipo del furgón (a nombre del principal)
+      const dueñoRuta = await principalDe(user.id)
+      setYo(dueñoRuta)
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       const gerente = esGerente(perfil?.rol)
       setSoyGerente(gerente)
@@ -166,12 +169,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       // Cada modo corresponde a un estado de la jornada: si no calza, se va a la pantalla que corresponde
       // Estado de la ruta de cada casero (cada uno puede comenzar la suya)
       const est = j ? await listarEstadosCaseros(j.id) : {}
-      const miEstado = estadoRutaDe(j, est, user.id)
+      const miEstado = estadoRutaDe(j, est, dueñoRuta)
       if (organizando && miEstado === 'en_curso' && !reorganizando) { router.replace('/ruta-en-curso' as any); return }
       if (!organizando && miEstado === 'preparacion') { router.replace('/organizar-ruta' as any); return }
       setEstados(est)
       setJornada(j)
-      const ps = j ? await listarParadas(j.id, gerente ? undefined : user.id) : []
+      const ps = j ? await listarParadas(j.id, gerente ? undefined : dueñoRuta) : []
       setTodas(ps)
       if (gerente) {
         const ids = Array.from(new Set(ps.map((p) => p.vendedor_id)))
@@ -180,9 +183,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         setCaseros(lista)
         // Por defecto la ruta de Gonzalo; si no está, la propia del gerente; si no, la del primer casero
         const gonzalo = lista.find((c) => esCaseroPrincipal(c.nombre))?.id
-        setVerDe((actual) => actual && ids.includes(actual) ? actual : gonzalo ?? (ids.includes(user.id) ? user.id : lista[0]?.id ?? null))
+        setVerDe((actual) => actual && ids.includes(actual) ? actual : gonzalo ?? (ids.includes(dueñoRuta) ? dueñoRuta : lista[0]?.id ?? null))
       } else {
-        setVerDe(user.id)
+        setVerDe(dueñoRuta)
       }
       setError(null)
     } catch (e: any) {

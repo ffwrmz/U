@@ -1,3 +1,4 @@
+import { cargarFurgones, furgonDeTrabajador, nombreEquipo, principalEn } from '@/lib/furgones'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
@@ -118,10 +119,15 @@ const GestionRuta = () => {
         const { data: vs } = await supabase.from('perfiles').select('id, nombre, rol, activo').in('rol', ['vendedor', 'dueno'])
           .neq('activo', false).order('nombre', { ascending: true })
         // Furgón asignado a cada trabajador (si ya se ejecutó asignar_furgon.sql)
-        const { data: fs } = await supabase.from('ubicaciones_inventario').select('nombre, responsable_id').eq('tipo', 'furgon').eq('activo', true)
-        const furgonDe = (id: string) => ((fs as any[]) || []).find((f) => f.responsable_id === id)?.nombre ?? null
+        const fs = await cargarFurgones()
+        const furgonDe = (id: string) => furgonDeTrabajador(fs, id)?.nombre ?? null
         // Gonzalo aparece primero; el resto por nombre
-        setVendedores(ordenarCaseros(((vs as any[]) || []).map((v) => ({ casero_id: v.id, nombre: v.nombre, furgon: furgonDe(v.id) }))))
+        // Los del mismo furgón son un equipo con una sola ruta: una tarjeta "Gonzalo - Juan" (a nombre del principal)
+        const lista = ((vs as any[]) || [])
+        const nombreDe = (id: string) => lista.find((x) => x.id === id)?.nombre
+        setVendedores(ordenarCaseros(lista
+          .filter((v) => principalEn(fs, v.id) === v.id || !lista.some((x) => x.id === principalEn(fs, v.id)))
+          .map((v) => ({ casero_id: v.id, nombre: nombreEquipo(fs, v.id, nombreDe), furgon: furgonDe(v.id) }))))
         // Preasignados para hoy (Calendario); si la tabla aún no existe, no hay
         try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch { setPreHoy([]) }
         setCargando(false)

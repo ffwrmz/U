@@ -1,3 +1,4 @@
+import { cargarFurgones, nombreEquipo, principalEn } from '@/lib/furgones'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -66,9 +67,15 @@ const Seguimiento = () => {
         supabase.from('pagos').select('cobrador_id, monto_abonado, creado_en, venta:ventas_pedidos ( cliente_id )').gte('creado_en', desde),
         supabase.from('ventas_pedidos').select('vendedor_id, cliente_id, monto_total, creado_en').gte('creado_en', desde).neq('estado_pago', 'anulada'),
       ])
-      setCaseros(ordenarCaseros((pe.data as Casero[]) || []))
-      setCobros(((pg.data as any[]) || []).map((x) => ({ quien: x.cobrador_id, monto: Number(x.monto_abonado), cliente_id: x.venta?.cliente_id ?? null, hora: x.creado_en })))
-      setVentas(((vs.data as any[]) || []).map((x) => ({ quien: x.vendedor_id, monto: Number(x.monto_total), cliente_id: x.cliente_id, hora: x.creado_en })))
+      // Los del mismo furgón se ven como un equipo ("Gonzalo - Juan") con la ruta del principal
+      const fs = await cargarFurgones()
+      const todos = (pe.data as Casero[]) || []
+      const nombreDe = (id: string) => todos.find((x) => x.id === id)?.nombre
+      setCaseros(ordenarCaseros(todos
+        .filter((c) => principalEn(fs, c.id) === c.id || !todos.some((x) => x.id === principalEn(fs, c.id)))
+        .map((c) => ({ ...c, nombre: nombreEquipo(fs, c.id, nombreDe) }))))
+      setCobros(((pg.data as any[]) || []).map((x) => ({ quien: x.cobrador_id && principalEn(fs, x.cobrador_id), monto: Number(x.monto_abonado), cliente_id: x.venta?.cliente_id ?? null, hora: x.creado_en })))
+      setVentas(((vs.data as any[]) || []).map((x) => ({ quien: x.vendedor_id && principalEn(fs, x.vendedor_id), monto: Number(x.monto_total), cliente_id: x.cliente_id, hora: x.creado_en })))
       setError(pe.error?.message ?? pg.error?.message ?? vs.error?.message ?? null)
       setTick((t) => t + 1)
     } catch (e: any) {

@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
@@ -147,9 +148,11 @@ const HomeScreen = () => {
           const { data: { user } } = await supabase.auth.getUser()
           const j = await obtenerOCrearJornadaHoy(false)
           if (!user || !j) { setMiRuta({ estado: j?.estado ?? null, total: 0, pendientes: 0 }); return }
-          const ps = await listarParadas(j.id, user.id)
+          // La ruta del equipo del furgón (si va con un compañero, es la misma para los dos)
+          const dueñoRuta = await principalDe(user.id)
+          const ps = await listarParadas(j.id, dueñoRuta)
           const est = await listarEstadosCaseros(j.id)
-          setMiRuta({ estado: estadoRutaDe(j, est, user.id) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+          setMiRuta({ estado: estadoRutaDe(j, est, dueñoRuta) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
           setMisClientes(ps.map((p) => p.cliente_id))
         } catch {
           setMiRuta({ estado: null, total: 0, pendientes: 0 })

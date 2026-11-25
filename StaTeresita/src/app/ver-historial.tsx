@@ -1,3 +1,4 @@
+import { pareja } from '@/lib/furgones'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { clp } from '@/lib/format'
@@ -16,6 +17,7 @@ interface Fila {
   fecha: string // ISO
   cliente: string
   trabajadorId: string | null
+  acompananteId?: string | null // compañero de furgón
   tipo: 'Venta' | 'Pago'
   productos: string
   total: number | null
@@ -48,7 +50,7 @@ const fechaHora = (iso: string) => {
 const COLS = [
   { k: 'fecha', t: 'Fecha', w: 104 },
   { k: 'cliente', t: 'Cliente', w: 130 },
-  { k: 'trabajador', t: 'Trabajador', w: 96 },
+  { k: 'trabajador', t: 'Trabajador', w: 120 },
   { k: 'tipo', t: 'Tipo', w: 56 },
   { k: 'productos', t: 'Productos', w: 170 },
   { k: 'total', t: 'Total', w: 84, num: true },
@@ -74,10 +76,10 @@ const Historial = () => {
     try {
       const desde = desdeRango(rango)
       let qv = supabase.from('ventas_pedidos')
-        .select('id, creado_en, fecha_venta, vendedor_id, monto_total, saldo_pendiente, estado_pago, descripcion, descuento_monto, clientes ( nombre ), venta_items ( cantidad, productos ( nombre ) )')
+        .select('*, clientes ( nombre ), venta_items ( cantidad, productos ( nombre ) )')
         .order('creado_en', { ascending: false }).limit(500)
       let qp = supabase.from('pagos')
-        .select('id, creado_en, cobrador_id, monto_abonado, metodo_pago, venta:ventas_pedidos ( id, saldo_pendiente, clientes ( nombre ) )')
+        .select('*, venta:ventas_pedidos ( id, saldo_pendiente, clientes ( nombre ) )')
         .order('creado_en', { ascending: false }).limit(500)
       if (desde) { qv = qv.gte('creado_en', desde); qp = qp.gte('creado_en', desde) }
       let [vs, ps] = await Promise.all([qv, qp])
@@ -92,20 +94,20 @@ const Historial = () => {
       if (vs.error) throw vs.error
       if (ps.error) throw ps.error
       const ventas: Fila[] = ((vs.data as any[]) || []).map((v) => ({
-        key: 'v' + v.id, ventaId: v.id, fecha: v.creado_en ?? v.fecha_venta, cliente: v.clientes?.nombre ?? '—', trabajadorId: v.vendedor_id,
+        key: 'v' + v.id, ventaId: v.id, fecha: v.creado_en ?? v.fecha_venta, cliente: v.clientes?.nombre ?? '—', trabajadorId: v.vendedor_id, acompananteId: v.acompanante_id ?? null,
         tipo: 'Venta',
         productos: ((v.venta_items as any[]) || []).map((i) => `${i.cantidad}× ${i.productos?.nombre ?? 'Producto'}`).join(', ') || v.descripcion || '',
         total: Number(v.monto_total), descuento: Number(v.descuento_monto ?? 0) || null, pagado: null, metodo: '',
         saldo: Number(v.saldo_pendiente), anulada: v.estado_pago === 'anulada',
       }))
       const pagos: Fila[] = ((ps.data as any[]) || []).map((p) => ({
-        key: 'p' + p.id, ventaId: p.venta?.id ?? null, fecha: p.creado_en, cliente: p.venta?.clientes?.nombre ?? '—', trabajadorId: p.cobrador_id,
+        key: 'p' + p.id, ventaId: p.venta?.id ?? null, fecha: p.creado_en, cliente: p.venta?.clientes?.nombre ?? '—', trabajadorId: p.cobrador_id, acompananteId: p.acompanante_id ?? null,
         tipo: 'Pago', productos: '', total: null, descuento: null, pagado: Number(p.monto_abonado),
         metodo: p.metodo_pago === 'transferencia' ? 'Transf.' : 'Efectivo', saldo: p.venta ? Number(p.venta.saldo_pendiente) : null, anulada: false,
       }))
       const todas = [...ventas, ...pagos].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
       setFilas(todas)
-      const ids = Array.from(new Set(todas.map((f) => f.trabajadorId).filter(Boolean))) as string[]
+      const ids = Array.from(new Set(todas.flatMap((f) => [f.trabajadorId, f.acompananteId]).filter(Boolean))) as string[]
       if (ids.length) {
         const { data } = await supabase.from('perfiles').select('id, nombre').in('id', ids)
         setNombres(Object.fromEntries(((data as any[]) || []).map((x) => [x.id, x.nombre])))
@@ -135,7 +137,7 @@ const Historial = () => {
     switch (k) {
       case 'fecha': return fechaHora(f.fecha)
       case 'cliente': return f.cliente
-      case 'trabajador': return f.trabajadorId ? (nombres[f.trabajadorId] ?? '—').split(' ')[0] : '—'
+      case 'trabajador': return f.trabajadorId ? pareja((id) => nombres[id]?.split(' ')[0], f.trabajadorId, f.acompananteId) : '—'
       case 'tipo': return f.anulada ? 'Anul.' : f.tipo
       case 'productos': return f.productos
       case 'total': return f.total == null ? '' : clp(f.total)

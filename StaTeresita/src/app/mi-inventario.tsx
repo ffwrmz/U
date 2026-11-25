@@ -1,3 +1,4 @@
+import { cargarFurgones, furgonDeTrabajador } from '@/lib/furgones'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { fechaCorta } from '@/lib/format'
@@ -37,7 +38,7 @@ const MiInventario = () => {
   const cargar = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const { data: u } = await supabase.from('ubicaciones_inventario').select('id, nombre').eq('tipo', 'furgon').eq('responsable_id', user.id).eq('activo', true).limit(1).maybeSingle()
+    const u = furgonDeTrabajador(await cargarFurgones(), user.id)
     setFurgon((u as any) ?? null)
     const [st, ps, sol] = await Promise.all([
       u ? supabase.from('inventario_stock').select('producto_id, cantidad, productos ( nombre )').eq('ubicacion_id', (u as any).id) : Promise.resolve({ data: [] } as any),
