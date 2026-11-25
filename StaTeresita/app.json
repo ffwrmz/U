@@ -52,12 +52,7 @@
           "locationWhenInUsePermission": "Necesitamos tu ubicación para mostrar el mapa de clientes, seguir la ruta y guardar la ubicación de las casas."
         }
       ],
-      [
-        "react-native-maps",
-        {
-          "flex": 1
-        }
-      ],
+      "react-native-maps",
       [
         "expo-notifications",
         {
