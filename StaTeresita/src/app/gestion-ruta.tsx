@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
@@ -7,11 +8,12 @@ import {
 } from '@/lib/rutas'
 import DireccionCliente from '@/components/DireccionCliente'
 import { fechaISO, PreDia, resolverPreasignados } from '@/lib/preasignaciones'
+import { preasignadosPara } from '@/lib/preasignadosDia'
 import MapaRuta from '@/components/MapaRuta'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, useRouter } from 'expo-router'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -137,14 +139,13 @@ const GestionRuta = () => {
     .sort((a, b) => a.orden - b.orden)
   const nombreCaseroDe = (id: string) => vendedores.find((v) => v.casero_id === id)?.nombre ?? 'otro casero'
 
-  // Desplegable "Preasignados para hoy" bajo cada casero: clientes del calendario de hoy (a mano o de listas fijas)
-  // que aún no están en ninguna ruta (y no son de otro casero). Plegado por defecto.
+  // Desplegable "Preasignados para hoy" bajo cada casero: UNA sola lista del día (a mano, de listas fijas o "de ayer")
+  // que aparece igual en todos los caseros. Al agregar clientes a la ruta de uno, salen de la lista de todos;
+  // los que se quitan con la X en un casero siguen apareciendo en los demás. Plegado por defecto.
   const [preAbiertos, setPreAbiertos] = useState<string[]>([])
   const alternarPre = (id: string) => setPreAbiertos((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
-  const prePara = (caseroId: string) => preHoy
-    .filter((p) => (!p.vendedor_id || p.vendedor_id === caseroId) && sinAsignar.some((c) => c.id === p.cliente_id)
-      && !(ocultosPre[caseroId] ?? []).includes(p.cliente_id))
-    .sort((a, b) => a.orden - b.orden)
+  const asignadosHoy = new Set(paradas.map((p) => p.cliente_id))
+  const prePara = (caseroId: string) => preasignadosPara(preHoy, caseroId, asignadosHoy, ocultosPre)
   const recargarPre = async () => {
     try { const hoy = fechaISO(new Date()); setPreHoy(await resolverPreasignados(hoy, hoy)) } catch {}
   }
@@ -156,9 +157,15 @@ const GestionRuta = () => {
   }
   // La X del desplegable solo oculta al cliente para ESE casero (no lo saca del día ni de la lista):
   // así se puede "Agregar todos" a un casero sin algunos, y esos siguen disponibles para los demás.
+  // Se guarda en el teléfono por día, así no reaparecen al salir y volver a la pantalla
+  const claveOcultos = `preasignados-ocultos:${fechaISO(new Date())}`
   const [ocultosPre, setOcultosPre] = useState<Record<string, string[]>>({})
+  useEffect(() => {
+    AsyncStorage.getItem(claveOcultos).then((t) => { if (t) setOcultosPre(JSON.parse(t)) }).catch(() => {})
+  }, [claveOcultos])
+  const guardarOcultos = (o: Record<string, string[]>) => { AsyncStorage.setItem(claveOcultos, JSON.stringify(o)).catch(() => {}); return o }
   const ocultarPre = (caseroId: string, clienteId: string) =>
-    setOcultosPre((o) => ({ ...o, [caseroId]: [...(o[caseroId] ?? []), clienteId] }))
+    setOcultosPre((o) => guardarOcultos({ ...o, [caseroId]: [...(o[caseroId] ?? []), clienteId] }))
 
   // ---------- Asignar ----------
   // Cada vez que se abre "Asignar" (para cualquier casero) parte limpio: sin selección, búsqueda ni filtros
@@ -362,7 +369,7 @@ const GestionRuta = () => {
                         </Pressable>
                       </Pressable>
                       {(ocultosPre[c.casero_id] ?? []).filter((id) => sinAsignar.some((x) => x.id === id)).length > 0 && (
-                        <Pressable onPress={() => setOcultosPre((o) => ({ ...o, [c.casero_id]: [] }))} hitSlop={6}>
+                        <Pressable onPress={() => setOcultosPre((o) => guardarOcultos({ ...o, [c.casero_id]: [] }))} hitSlop={6}>
                           <Text style={styles.mostrarOcultos}>Mostrar ocultos ({(ocultosPre[c.casero_id] ?? []).filter((id) => sinAsignar.some((x) => x.id === id)).length})</Text>
                         </Pressable>
                       )}
@@ -374,7 +381,8 @@ const GestionRuta = () => {
                               <Text style={styles.paradaNombre} numberOfLines={1}>{cp?.nombre ?? 'Cliente'}</Text>
                               {cp && <DireccionCliente c={cp} compacta />}
                               {p.lista && <Text style={styles.preLista}>Lista: {p.lista.nombre}</Text>}
-                              {!!p.nota?.startsWith('De ayer') && <Text style={styles.deAyer}>{p.nota}</Text>}
+                              {!!p.nota?.startsWith('De ayer') && <Text style={styles.deAyer}>{p.nota}{p.vendedor_id && p.vendedor_id !== c.casero_id ? ` · de ${nombreCaseroDe(p.vendedor_id)}` : ''}</Text>}
+                              {!p.nota?.startsWith('De ayer') && !!p.vendedor_id && p.vendedor_id !== c.casero_id && <Text style={styles.preLista}>Preasignado a {nombreCaseroDe(p.vendedor_id)}</Text>}
                             </View>
                             <Pressable onPress={() => agregarPre(c.casero_id, [p.cliente_id])} disabled={ocupado} hitSlop={6} accessibilityLabel={`Agregar a la ruta de ${c.nombre}`}>
                               <Ionicons name="add-circle" size={24} color={Palette.navy} />
