@@ -223,9 +223,9 @@ begin
        and (cliente_id is null or cliente_id = p_cliente);
     if not found then
       if not v_puede_desc then raise exception 'No tienes permiso para hacer descuentos'; end if;
-      raise exception 'El descuento supera tu límite (% %) y no tiene aprobación',
-        (case when v_limite = trunc(v_limite) then trunc(v_limite)::text else v_limite::text end) || '%',
-        coalesce('o $' || trunc(v_limite_monto)::text, '');
+      raise exception 'El descuento supera tu límite (%) y no tiene aprobación',
+        (case when v_limite = trunc(v_limite) then trunc(v_limite)::text else v_limite::text end) || '%'
+          || coalesce(' o $' || trunc(v_limite_monto)::text, '');
     end if;
   end if;
   v_total := v_total - v_desc;
