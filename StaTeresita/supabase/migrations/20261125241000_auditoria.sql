@@ -6,7 +6,7 @@
 -- quién lo hizo y cómo estaba antes y después. Solo el gerente puede leerla.
 -- usuario_id pasa a permitir vacío: los cambios hechos desde el SQL Editor (sin sesión de la app) quedan sin usuario,
 -- en vez de inventar uno.
--- Después: select * from pruebas.todas();  (deberían salir 69 PASA: las 67 de antes y AU-01, AU-02)
+-- Después: select * from pruebas.todas();  (deberían salir 68 PASA: las 66 de antes y AU-01, AU-02)
 -- =====================================================================
 
 alter table public.auditoria_movimientos alter column usuario_id drop not null;
