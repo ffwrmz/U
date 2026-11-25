@@ -16,6 +16,12 @@ import {
   titulo,
 } from "./mapaClientes.types";
 
+// Sin puntos de interés (negocios, farmacias, supermercados, paraderos): solo calles y nuestros clientes
+const SIN_LUGARES = [
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+]
+
 // Mapa base: Google Maps en Android y Apple Maps en iPhone. Sin señal se ven las zonas que el teléfono
 // ya tenía guardadas de antes (el propio mapa las guarda); los puntos y la ruta salen de lo guardado por la app.
 // (No se usan los cuadros de tile.openstreetmap.org: su política no permite apps como esta.)
@@ -95,6 +101,8 @@ export default function MapaClientes({
     <MapView
       ref={mapRef}
       style={styles.map}
+      customMapStyle={SIN_LUGARES}
+      showsPointsOfInterest={false}
       initialRegion={{
         latitude: CENTRO_INICIAL.latitud,
         longitude: CENTRO_INICIAL.longitud,

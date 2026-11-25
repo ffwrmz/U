@@ -328,7 +328,8 @@ const HomeScreen = () => {
             )
           })()}
 
-          {/* Lista de clientes: el gerente ve solo 5 (primero los que más deben) y un enlace a Clientes */}
+          {/* Lista de clientes con más deuda: solo para el casero (el gerente tiene el mapa y el acceso a Clientes) */}
+          {!soyGerente && (
           <>
           <View style={styles.sectionRow}>
             <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Clientes con más deuda</Text>
@@ -376,6 +377,7 @@ const HomeScreen = () => {
             )
           })}
           </>
+          )}
         </View>
       </ScrollView>
     </View>
