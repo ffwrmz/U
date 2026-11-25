@@ -2,6 +2,7 @@ import Header from '@/components/Header'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
+import { Companero, listarEquipo } from '@/lib/ajustes'
 import { normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { formatearRut, normalizarRut, rutValido } from '@/lib/rut'
@@ -55,6 +56,8 @@ const Trabajadores = () => {
   const [soyGerente, setSoyGerente] = useState(false)
   const [yo, setYo] = useState<string | null>(null)
   const [lista, setLista] = useState<Trabajador[]>([])
+  // El casero ve solo los nombres y el botón de WhatsApp de sus compañeros
+  const [equipo, setEquipo] = useState<Companero[]>([])
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<Filtro>('activos')
 
@@ -71,6 +74,11 @@ const Trabajadores = () => {
     if (user) {
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       setSoyGerente(esGerente(perfil?.rol))
+      if (!esGerente(perfil?.rol)) {
+        setEquipo(await listarEquipo())
+        setCargando(false)
+        return
+      }
     }
     // select('*') para que funcione aunque todavía no existan algunas columnas
     const { data, error: e } = await supabase.from('perfiles').select('*').in('rol', ['dueno', 'vendedor']).order('nombre', { ascending: true })
@@ -181,7 +189,25 @@ const Trabajadores = () => {
       {cargando ? (
         <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} />
       ) : !soyGerente ? (
-        <Text style={styles.vacio}>Solo el gerente puede administrar a los trabajadores.</Text>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.resumen}>Escríbele a un compañero por WhatsApp</Text>
+          {equipo.filter((t) => t.id !== yo).map((t) => (
+            <View key={t.id} style={styles.card}>
+              <View style={[styles.avatar, { backgroundColor: t.rol === 'dueno' ? Palette.navy : Palette.orange }]}>
+                <Text style={styles.avatarText}>{t.nombre.trim().charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nombre} numberOfLines={1}>{t.nombre}</Text>
+                <Text style={styles.sub}>{t.rol === 'dueno' ? 'Gerente' : 'Casero'}{tieneWhatsapp(t.telefono) ? '' : ' · sin teléfono'}</Text>
+              </View>
+              {tieneWhatsapp(t.telefono) && (
+                <Pressable style={styles.wsp} onPress={() => abrirWhatsApp(t.telefono)} hitSlop={6} accessibilityLabel={`Escribirle a ${t.nombre} por WhatsApp`}>
+                  <Ionicons name="logo-whatsapp" size={20} color={Palette.onNavy} />
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {error && <Text style={styles.error}>No se pudo cargar: {error}</Text>}

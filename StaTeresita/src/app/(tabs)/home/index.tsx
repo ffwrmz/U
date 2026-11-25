@@ -247,11 +247,10 @@ const HomeScreen = () => {
               { t: 'Clientes', i: 'people-outline', ruta: '../clientes', ver: true },
               // Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente)
               { t: 'Registrar pago', i: 'cash-outline', ruta: '../registrar-pago', ver: !soyGerente && permisos.puede_cobrar, dinero: true },
-              { t: 'Equipo', i: 'logo-whatsapp', ruta: '../equipo', ver: !!rolUsuario },
               { t: 'Historial', i: 'receipt-outline', ruta: '../ver-historial', ver: esDueno, dinero: true },
               { t: 'Calendario', i: 'calendar-outline', ruta: '../calendario', ver: esDueno },
               { t: 'Seguimiento', i: 'navigate-circle-outline', ruta: '../seguimiento', ver: esDueno },
-              { t: 'Trabajadores', i: 'people', ruta: '../trabajadores', ver: esDueno },
+              { t: 'Trabajadores', i: 'people', ruta: '../trabajadores', ver: !!rolUsuario }, // el casero ve a sus compañeros con WhatsApp
               { t: 'Zonas', i: 'map-outline', ruta: '../zonas', ver: esDueno },
               { t: 'Descuentos', i: 'pricetag-outline', ruta: '../solicitudes-descuento', ver: esDueno },
               { t: 'Ajustes', i: 'settings-outline', ruta: '../ajustes', ver: esDueno },
