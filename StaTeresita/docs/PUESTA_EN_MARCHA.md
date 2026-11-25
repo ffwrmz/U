@@ -10,6 +10,9 @@ Pegar y correr en **Supabase > SQL Editor** (en este orden) los archivos que aú
 1. `supabase/migrations/20261123160000_modo_sin_conexion.sql`
 2. `supabase/migrations/20261124160000_finalizar_mi_ruta.sql`
 3. `supabase/migrations/20261124190000_rut_trabajadores.sql`
+4. `supabase/migrations/20261124200000_arreglos_pruebas_v13_r08.sql`
+5. `supabase/migrations/20261124210000_normalizar_rut.sql`
+6. `supabase/migrations/20261125020000_ajustes_permisos.sql`
 
 Funciones (Edge Functions) en **Supabase > Edge Functions**:
 
