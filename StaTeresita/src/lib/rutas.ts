@@ -28,6 +28,7 @@ export interface Parada {
   estado: EstadoParada
   visitado_en: string | null
   nota: string | null
+  fuera_de_ruta?: boolean // venta o cobro a un cliente que no estaba en la ruta (queda como visitado)
   cliente: ClienteRuta | null
 }
 
@@ -35,7 +36,8 @@ export interface Parada {
 export const SELECT_CLIENTE =
   'id, nombre, telefono, direccion, dir:direcciones ( id, latitud, longitud, numero, referencia, sector:sectores ( nombre, comuna:comunas ( nombre ) ), calle:calles ( nombre ), pasaje:pasajes ( nombre ) )'
 
-const SELECT_PARADA = `id, vendedor_id, cliente_id, orden, estado, visitado_en, nota, cliente:clientes ( ${SELECT_CLIENTE} )`
+// Con * para incluir fuera_de_ruta si ya existe la columna (migración 20261125040000)
+const SELECT_PARADA = `*, cliente:clientes ( ${SELECT_CLIENTE} )`
 const SELECT_JORNADA = 'id, fecha, estado, iniciada_en, finalizada_en'
 
 // Fecha de hoy en Chile (YYYY-MM-DD)

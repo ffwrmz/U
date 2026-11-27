@@ -1,3 +1,4 @@
+import { asignarTrabajadoresFurgon, cargarFurgones } from '@/lib/furgones'
 import Header from '@/components/Header'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
@@ -66,6 +67,9 @@ const GestionInventario = () => {
   const [personas, setPersonas] = useState<Persona[]>([])
   const [sinResponsable, setSinResponsable] = useState(false) // falta ejecutar asignar_furgon.sql
   const [asignarId, setAsignarId] = useState<string | null>(null)
+  // Trabajadores de cada furgón (hasta 2) y los elegidos en la ventana de asignar
+  const [miembros, setMiembros] = useState<Record<string, string[]>>({})
+  const [elegidos, setElegidos] = useState<string[]>([])
   const [stock, setStock] = useState<StockFila[]>([])
   const [guardando, setGuardando] = useState(false)
   const [abiertos, setAbiertos] = useState<Record<string, boolean>>({})
@@ -114,9 +118,13 @@ const GestionInventario = () => {
 
   const nombreResponsable = (id?: string | null) => personas.find((x) => x.id === id)?.nombre ?? null
 
-  const asignarResponsable = async (furgonId: string, personaId: string | null) => {
-    const { error } = await supabase.from('ubicaciones_inventario').update({ responsable_id: personaId }).eq('id', furgonId)
-    if (error) { Alert.alert('Error al asignar', error.message); return }
+  const nombresFurgon = (f: Ubicacion) => (miembros[f.id] ?? (f.responsable_id ? [f.responsable_id] : []))
+    .map((id) => nombreResponsable(id) ?? 'Trabajador').join(' - ')
+  const abrirAsignar = (f: Ubicacion) => { setElegidos(miembros[f.id] ?? (f.responsable_id ? [f.responsable_id] : [])); setAsignarId(f.id) }
+  const alternarElegido = (id: string) => setElegidos((l) => (l.includes(id) ? l.filter((x) => x !== id) : l.length >= 2 ? [l[1], id] : [...l, id]))
+  const guardarAsignacion = async () => {
+    if (!asignarId) return
+    try { await asignarTrabajadoresFurgon(asignarId, elegidos) } catch (e: any) { Alert.alert('Error al asignar', e.message ?? String(e)); return }
     setAsignarId(null)
     cargar()
   }
@@ -137,6 +145,7 @@ const GestionInventario = () => {
     setErrorCarga(error ? error.message : null)
     setProductos((ps.data as Producto[]) || [])
     setUbicaciones((us.data as Ubicacion[]) || [])
+    cargarFurgones().then((fs) => setMiembros(Object.fromEntries(fs.map((f) => [f.id, f.miembros]))))
     setSinResponsable(us.sinResponsable)
     setPersonas((pe.data as Persona[]) || [])
     setStock((st.data as StockFila[]) || [])
@@ -361,7 +370,7 @@ const GestionInventario = () => {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.filaTitulo}>{f.nombre}</Text>
-                    <Text style={styles.filaSub}>{f.responsable_id ? `${nombreResponsable(f.responsable_id) ?? 'Trabajador'} · ` : ''}{f.patente ? `${f.patente} · ` : ''}{totalDe(f.id)} unidades</Text>
+                    <Text style={styles.filaSub}>{nombresFurgon(f) ? `${nombresFurgon(f)} · ` : ''}{f.patente ? `${f.patente} · ` : ''}{totalDe(f.id)} unidades</Text>
                   </View>
                   <Ionicons name={abierto ? 'chevron-up' : 'chevron-down'} size={22} color={Palette.navy} />
                 </Pressable>
@@ -372,12 +381,12 @@ const GestionInventario = () => {
                       <View style={styles.responsableFila}>
                         <Ionicons name="person-outline" size={18} color={Palette.navy} />
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.labelChico}>Trabajador asignado</Text>
-                          <Text style={styles.responsableNombre}>{nombreResponsable(f.responsable_id) ?? 'Sin asignar'}</Text>
+                          <Text style={styles.labelChico}>Trabajadores (hasta 2)</Text>
+                          <Text style={styles.responsableNombre}>{nombresFurgon(f) || 'Sin asignar'}</Text>
                         </View>
                         {editable && (
-                          <Pressable style={styles.botonChico} onPress={() => setAsignarId(f.id)}>
-                            <Text style={styles.botonChicoText}>{f.responsable_id ? 'Cambiar' : 'Asignar'}</Text>
+                          <Pressable style={styles.botonChico} onPress={() => abrirAsignar(f)}>
+                            <Text style={styles.botonChicoText}>{nombresFurgon(f) ? 'Cambiar' : 'Asignar'}</Text>
                           </Pressable>
                         )}
                       </View>
@@ -592,25 +601,27 @@ const GestionInventario = () => {
       <Modal visible={!!asignarId} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAsignarId(null)}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Asignar trabajador</Text>
+            <Text style={styles.modalTitle}>Trabajadores del furgón</Text>
             <Pressable onPress={() => setAsignarId(null)}><Ionicons name="close" size={24} color={Palette.text} /></Pressable>
           </View>
           <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
             {personas.length === 0 && <Text style={styles.vacio}>No hay trabajadores en la tabla perfiles.</Text>}
+            <Text style={styles.vacio}>Elige 1 o 2 trabajadores. Si alguno estaba en otro furgón, se cambia a este.</Text>
             {personas.map((pe) => {
-              const actual = ubicaciones.find((u) => u.id === asignarId)?.responsable_id === pe.id
+              const actual = elegidos.includes(pe.id)
+              const otro = Object.entries(miembros).find(([fid, ms]) => fid !== asignarId && ms.includes(pe.id))
               return (
-                <Pressable key={pe.id} style={[styles.opcionPersona, actual && styles.opcionPersonaActiva]} onPress={() => asignarId && asignarResponsable(asignarId, pe.id)}>
-                  <Ionicons name={actual ? 'radio-button-on' : 'radio-button-off'} size={22} color={actual ? Palette.navy : Palette.textFaint} />
+                <Pressable key={pe.id} style={[styles.opcionPersona, actual && styles.opcionPersonaActiva]} onPress={() => alternarElegido(pe.id)}>
+                  <Ionicons name={actual ? 'checkbox' : 'square-outline'} size={22} color={actual ? Palette.navy : Palette.textFaint} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.filaTitulo}>{pe.nombre}</Text>
-                    <Text style={styles.filaSub}>{pe.rol === 'dueno' ? 'Gerente (también trabaja en ruta)' : 'Casero'}</Text>
+                    <Text style={styles.filaSub}>{pe.rol === 'dueno' ? 'Gerente (también trabaja en ruta)' : 'Casero'}{otro ? ` · hoy en ${ubicaciones.find((u) => u.id === otro[0])?.nombre ?? 'otro furgón'}` : ''}</Text>
                   </View>
                 </Pressable>
               )
             })}
-            <Pressable style={styles.botonQuitarAsignacion} onPress={() => asignarId && asignarResponsable(asignarId, null)}>
-              <Text style={styles.botonCargarText}>Dejar sin asignar</Text>
+            <Pressable style={styles.botonGuardarAsignacion} onPress={guardarAsignacion}>
+              <Text style={styles.botonCargarText}>{elegidos.length === 0 ? 'Dejar sin trabajadores' : `Guardar (${elegidos.length})`}</Text>
             </Pressable>
           </ScrollView>
         </SafeAreaView>
@@ -716,6 +727,7 @@ const tabla = StyleSheet.create({
 })
 
 const styles = StyleSheet.create({
+  botonGuardarAsignacion: { backgroundColor: Palette.navy, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 20, gap: 10 },
   aviso: { margin: 20, padding: 16, borderRadius: 14, backgroundColor: Palette.amberSoft, flexDirection: 'row', gap: 10, alignItems: 'flex-start' },

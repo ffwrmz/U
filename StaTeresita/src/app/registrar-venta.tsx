@@ -1,5 +1,9 @@
+import { cargarFurgones, FurgonInfo, furgonDeTrabajador } from '@/lib/furgones'
+import { clientesPermitidosHoy } from '@/lib/permitidos'
+import { DESCUENTO_POR_DEFECTO, miLimiteDescuento, Permisos, permisosDe } from '@/lib/ajustes'
 import { hayConexion } from '@/lib/offline/red'
 import Header from '@/components/Header'
+import QuienLoHizo from '@/components/QuienLoHizo'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
 import { clp } from '@/lib/format'
@@ -14,28 +18,13 @@ interface Cliente { id: string; nombre: string }
 interface Producto { id: string; nombre: string; marca: string | null; especificacion: string | null; precio_venta: number; controla_stock: boolean }
 interface Ubicacion { id: string; tipo: 'bodega' | 'furgon'; nombre: string; responsable_id?: string | null }
 interface StockFila { ubicacion_id: string; producto_id: string; cantidad: number }
-interface Solicitud { id: string; producto_id: string; tipo: 'porcentaje' | 'monto'; valor: number; estado: string }
-interface Linea { producto: Producto; cantidad: number; tipo: 'porcentaje' | 'monto'; valor: string; solicitudId?: string | null }
+interface Solicitud { id: string; producto_id: string | null; cliente_id: string | null; tipo: 'porcentaje' | 'monto'; valor: number; estado: string }
+interface Linea { producto: Producto; cantidad: number }
 
-const LIMITE_CASERO = 10
 
 const numero = (t: string) => parseInt(t.replace(/\D/g, ''), 10) || 0
 const detalle = (p: Producto) => [p.marca, p.especificacion].filter(Boolean).join(' · ')
 
-// Precio final por unidad (misma regla que la función registrar_venta de Supabase)
-const precioFinal = (l: Linea) => {
-  const lista = Number(l.producto.precio_venta)
-  const v = numero(l.valor)
-  if (v <= 0) return lista
-  if (l.tipo === 'porcentaje') return Math.round(lista * (1 - Math.min(v, 100) / 100))
-  return Math.max(lista - v, 0)
-}
-const porcentajeEquivalente = (l: Linea) => {
-  const lista = Number(l.producto.precio_venta)
-  return lista > 0 ? ((lista - precioFinal(l)) / lista) * 100 : 0
-}
-const descuentoInvalido = (l: Linea) =>
-  (l.tipo === 'porcentaje' && numero(l.valor) > 100) || (l.tipo === 'monto' && numero(l.valor) > Number(l.producto.precio_venta))
 
 const RegistrarVenta = () => {
   const router = useRouter()
@@ -44,11 +33,23 @@ const RegistrarVenta = () => {
   const [errorCarga, setErrorCarga] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
   const [soyGerente, setSoyGerente] = useState(false)
+  // Descuento máximo sin aprobación (Ajustes: el del casero o el general; 10% por defecto)
+  const [LIMITE_CASERO, setLimite] = useState(DESCUENTO_POR_DEFECTO)
+  useEffect(() => { miLimiteDescuento().then(setLimite) }, [])
+  // Permisos del trabajador (Ajustes): descuentos sí/no, tope en $ y si vende al contado, a crédito o ambas
+  const [permisos, setPermisos] = useState<Permisos>(permisosDe(null))
+  // Descuento sobre el total de la compra
+  const [descTipo, setDescTipo] = useState<'porcentaje' | 'monto'>('porcentaje')
+  const [descValor, setDescValor] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [productos, setProductos] = useState<Producto[]>([])
   const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
+  const [todasUbic, setTodasUbic] = useState<Ubicacion[]>([])
+  const [furgonesInfo, setFurgonesInfo] = useState<FurgonInfo[]>([])
+  // Gerente: venta a nombre de otro trabajador (sale del furgón de ese trabajador)
+  const [vendedor, setVendedor] = useState<string | null>(null)
   const [sinFurgon, setSinFurgon] = useState(false) // casero sin furgón asignado: no puede vender
   const [stock, setStock] = useState<StockFila[]>([])
   const [aprobadas, setAprobadas] = useState<Solicitud[]>([])
@@ -80,9 +81,14 @@ const RegistrarVenta = () => {
     let gerente = false
     if (user) {
       setUserId(user.id)
-      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
+      const { data: perfil } = await supabase.from('perfiles').select('*').eq('id', user.id).single()
       gerente = esGerente(perfil?.rol)
       setSoyGerente(gerente)
+      const p = perfil as any
+      const pm = permisosDe(p)
+      if (gerente) pm.tipo_venta = 'ambas'
+      setPermisos(pm)
+      if (pm.tipo_venta === 'credito') setModo('credito')
     }
     const [cs, ps, us, st, sol] = await Promise.all([
       supabase.from('clientes').select('id, nombre').order('nombre', { ascending: true }),
@@ -90,12 +96,13 @@ const RegistrarVenta = () => {
       traerUbicaciones(),
       supabase.from('inventario_stock').select('ubicacion_id, producto_id, cantidad'),
       user
-        ? supabase.from('solicitudes_descuento').select('id, producto_id, tipo, valor, estado').eq('solicitante_id', user.id).eq('estado', 'aprobada')
+        ? supabase.from('solicitudes_descuento').select('id, producto_id, cliente_id, tipo, valor, estado').eq('solicitante_id', user.id).eq('estado', 'aprobada')
         : Promise.resolve({ data: [], error: null } as any),
     ])
     const error = cs.error || ps.error || us.error || st.error
     setErrorCarga(error ? error.message : null)
-    const listaClientes = (cs.data as Cliente[]) || []
+    const permitidos = await clientesPermitidosHoy()
+    const listaClientes = ((cs.data as Cliente[]) || []).filter((c) => !permitidos || permitidos.has(c.id))
     setClientes(listaClientes)
     if (clienteId) {
       const elegido = listaClientes.find((c) => c.id === clienteId)
@@ -103,15 +110,20 @@ const RegistrarVenta = () => {
     }
     setProductos((ps.data as Producto[]) || [])
     const ubic = (us.data as Ubicacion[]) || []
+    // Furgón de cada trabajador (pueden ir 2 por furgón)
+    const furgones = await cargarFurgones()
+    setFurgonesInfo(furgones)
+    const miFurgonId = furgonDeTrabajador(furgones, user?.id)?.id
     // Quien tiene un furgón asignado solo puede vender lo que lleva ese furgón
-    const propia = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id) : undefined
+    const propia = miFurgonId ? ubic.find((u) => u.id === miFurgonId) : undefined
     // Un casero sin furgón asignado no puede vender (ni de bodega ni de otros furgones)
     setSinFurgon(!gerente && !propia)
     setUbicaciones(propia ? [propia] : gerente ? ubic : [])
+    setTodasUbic(ubic)
     setStock((st.data as StockFila[]) || [])
     setAprobadas((sol.data as Solicitud[]) || [])
     // Por defecto: el furgón asignado al usuario; si no tiene, la bodega (gerente) o el primer furgón
-    const propio = user ? ubic.find((u) => u.tipo === 'furgon' && u.responsable_id === user.id)?.id : undefined
+    const propio = propia?.id
     setUbicacionId((actual) => actual ?? propio ?? (gerente ? (ubic.find((u) => u.tipo === 'bodega')?.id ?? ubic[0]?.id) : undefined) ?? null)
     setCargando(false)
   }
@@ -132,7 +144,7 @@ const RegistrarVenta = () => {
       if (existe) {
         return ls.map((l) => (l.producto.id === p.id ? { ...l, cantidad: Math.min(l.cantidad + 1, p.controla_stock ? stockDe(p.id) : 9999) } : l))
       }
-      return [...ls, { producto: p, cantidad: 1, tipo: 'porcentaje', valor: '' }]
+      return [...ls, { producto: p, cantidad: 1 }]
     })
   }
 
@@ -147,38 +159,30 @@ const RegistrarVenta = () => {
 
   const quitar = (id: string) => setLineas((ls) => ls.filter((l) => l.producto.id !== id))
 
-  // Solicitud aprobada que cubre el descuento de esta línea (solo importa para caseros)
-  const solicitudQueCubre = (l: Linea) => {
-    const pct = porcentajeEquivalente(l)
-    const lista = Number(l.producto.precio_venta)
-    return aprobadas.find((s) => {
-      if (s.producto_id !== l.producto.id) return false
-      const pctSol = s.tipo === 'porcentaje' ? Number(s.valor) : lista > 0 ? (Number(s.valor) / lista) * 100 : 0
-      return pctSol >= pct - 0.0001
-    })
-  }
-  const requiereAprobacion = (l: Linea) => !soyGerente && porcentajeEquivalente(l) > LIMITE_CASERO + 0.0001
-  const bloqueada = (l: Linea) => descuentoInvalido(l) || (requiereAprobacion(l) && !solicitudQueCubre(l))
+  // ---------- Totales y descuento sobre el total ----------
+  const subtotalLista = lineas.reduce((n, l) => n + Number(l.producto.precio_venta) * l.cantidad, 0)
+  const valorDesc = numero(descValor)
+  const puedeDescontar = soyGerente || permisos.puede_descontar
+  const descuento = !puedeDescontar || valorDesc <= 0 ? 0
+    : descTipo === 'porcentaje' ? Math.round(subtotalLista * Math.min(valorDesc, 100) / 100) : Math.min(valorDesc, subtotalLista)
+  const descuentoInvalido = (descTipo === 'porcentaje' && valorDesc > 100) || (subtotalLista > 0 && descuento >= subtotalLista)
+  const total = subtotalLista - descuento
+  const pctDesc = subtotalLista > 0 ? (descuento / subtotalLista) * 100 : 0
+  const limiteMonto = permisos.descuento_max_monto
+  // Sobre el límite (porcentaje o tope en $) necesita una solicitud aprobada por el gerente
+  const excedeLimite = !soyGerente && descuento > 0 && (pctDesc > LIMITE_CASERO + 0.0001 || (limiteMonto != null && descuento > limiteMonto))
+  const solicitudQueCubre = aprobadas.find((x) => !x.producto_id && x.tipo === descTipo && Number(x.valor) >= valorDesc && (!x.cliente_id || x.cliente_id === cliente?.id))
+  const textoLimite = `${LIMITE_CASERO}%${limiteMonto != null ? ` o ${clp(limiteMonto)}` : ''}`
 
-  const solicitarDescuento = async (l: Linea) => {
-    if (!userId) return
-    const valor = numero(l.valor)
-    if (valor <= 0) return
+  const solicitarDescuento = async () => {
+    if (!userId || valorDesc <= 0) return
     const { error } = await supabase.from('solicitudes_descuento').insert([{
-      solicitante_id: userId,
-      producto_id: l.producto.id,
-      cliente_id: cliente?.id ?? null,
-      tipo: l.tipo,
-      valor,
+      solicitante_id: userId, producto_id: null, cliente_id: cliente?.id ?? null, tipo: descTipo, valor: valorDesc, total_compra: subtotalLista,
     }])
     if (error) Alert.alert('Error', error.message)
     else Alert.alert('Solicitud enviada', 'El gerente verá tu solicitud. Cuando la apruebe, vuelve a esta pantalla para usarla.')
   }
 
-  // ---------- Totales ----------
-  const subtotalLista = lineas.reduce((n, l) => n + Number(l.producto.precio_venta) * l.cantidad, 0)
-  const total = lineas.reduce((n, l) => n + precioFinal(l) * l.cantidad, 0)
-  const descuentos = subtotalLista - total
   const pieNum = numero(pie)
   const pagadoAhora = modo === 'contado' ? total : Math.min(pieNum, total)
   const saldo = total - pagadoAhora
@@ -187,27 +191,15 @@ const RegistrarVenta = () => {
     if (!cliente) { Alert.alert('Error', 'Selecciona un cliente'); return }
     if (!ubicacionId) { Alert.alert('Error', 'Selecciona desde dónde se vende'); return }
     if (lineas.length === 0) { Alert.alert('Error', 'Agrega al menos un producto'); return }
-    const mala = lineas.find(bloqueada)
-    if (mala) {
-      Alert.alert('Descuento no permitido', descuentoInvalido(mala)
-        ? `El descuento de ${mala.producto.nombre} es inválido.`
-        : `El descuento de ${mala.producto.nombre} supera el ${LIMITE_CASERO}%. Solicítalo al gerente.`)
+    if (descuentoInvalido) { Alert.alert('Descuento no permitido', 'El descuento no puede ser igual o mayor al total.'); return }
+    if (excedeLimite && !solicitudQueCubre) {
+      Alert.alert('Descuento no permitido', `El descuento supera tu límite (${textoLimite}). Solicítalo al gerente.`)
       return
     }
     if (total <= 0) { Alert.alert('Error', 'El total debe ser mayor a 0'); return }
     if (modo === 'credito' && pieNum > total) { Alert.alert('Error', 'El pie no puede ser mayor al total'); return }
 
-    const items = lineas.map((l) => {
-      const v = numero(l.valor)
-      const sol = requiereAprobacion(l) ? solicitudQueCubre(l) : null
-      return {
-        producto_id: l.producto.id,
-        cantidad: l.cantidad,
-        descuento_tipo: v > 0 ? l.tipo : 'ninguno',
-        descuento_valor: v,
-        solicitud_id: sol?.id ?? null,
-      }
-    })
+    const items = lineas.map((l) => ({ producto_id: l.producto.id, cantidad: l.cantidad, descuento_tipo: 'ninguno', descuento_valor: 0 }))
 
     setGuardando(true)
     const { error } = await supabase.rpc('registrar_venta', {
@@ -218,13 +210,20 @@ const RegistrarVenta = () => {
       p_pie: modo === 'credito' ? pieNum : 0,
       p_metodo: metodo,
       p_nota: nota.trim() || null,
+      p_descuento_tipo: descuento > 0 ? descTipo : 'ninguno',
+      p_descuento_valor: descuento > 0 ? valorDesc : 0,
+      p_solicitud: excedeLimite && solicitudQueCubre ? solicitudQueCubre.id : null,
+      ...(vendedor ? { p_vendedor: vendedor } : {}),
       // Solo para la app sin conexión (no se envían a Supabase): total y texto para mostrarla mientras se sube
       _total: total,
       _descripcion: `${lineas.map((l) => `${l.cantidad} × ${l.producto.nombre}`).join(', ')} · ${cliente.nombre}`,
     })
     setGuardando(false)
     if (error) { Alert.alert('Error al registrar la venta', error.message); return }
-    Alert.alert('Éxito', hayConexion() ? 'Venta registrada correctamente' : 'Venta guardada sin conexión. Se subirá sola cuando vuelva la señal.')
+    // Quién queda en la venta: el vendedor y su compañero de furgón (si van dos)
+    const f = furgonesInfo.find((x) => x.id === ubicacionId)
+    const quien = f && f.miembros.length > 1 ? ` (${f.nombre}: ${f.miembros.length} trabajadores)` : ''
+    Alert.alert('Éxito', hayConexion() ? `Venta registrada correctamente${quien}` : 'Venta guardada sin conexión. Se subirá sola cuando vuelva la señal.')
     router.back()
   }
 
@@ -254,6 +253,21 @@ const RegistrarVenta = () => {
             <Ionicons name="chevron-down" size={20} color={Palette.textMuted} />
           </Pressable>
 
+          {soyGerente && (
+            <QuienLoHizo titulo="¿Quién hizo la venta?" valor={vendedor} onCambiar={(t) => {
+              setVendedor(t)
+              setLineas([])
+              if (!t) { setUbicaciones(todasUbic); return }
+              const suFurgonId = furgonDeTrabajador(furgonesInfo, t)?.id
+              const suFurgon = todasUbic.find((u) => u.id === suFurgonId)
+              setUbicaciones(suFurgon ? [suFurgon] : [])
+              setUbicacionId(suFurgon?.id ?? null)
+            }} />
+          )}
+          {soyGerente && !!vendedor && ubicaciones.length === 0 && (
+            <Text style={styles.error}>Ese trabajador no tiene un furgón asignado; asígnale uno en Inventario para registrar ventas a su nombre.</Text>
+          )}
+
           <Text style={styles.label}>Se vende desde</Text>
           <View style={styles.chips}>
             {ubicaciones.map((u) => (
@@ -272,85 +286,81 @@ const RegistrarVenta = () => {
           </View>
           {lineas.length === 0 && <Text style={styles.vacio}>Aún no agregas productos.</Text>}
 
-          {lineas.map((l) => {
-            const final = precioFinal(l)
-            const pct = porcentajeEquivalente(l)
-            const necesita = requiereAprobacion(l)
-            const cubierta = necesita ? solicitudQueCubre(l) : null
-            return (
-              <View key={l.producto.id} style={styles.linea}>
-                <View style={styles.lineaTop}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.lineaNombre}>{l.producto.nombre}</Text>
-                    {!!detalle(l.producto) && <Text style={styles.sub}>{detalle(l.producto)}</Text>}
-                    <Text style={styles.sub}>Precio: {clp(Number(l.producto.precio_venta))}</Text>
-                  </View>
-                  <Pressable onPress={() => quitar(l.producto.id)} hitSlop={8}>
-                    <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
-                  </Pressable>
+          {lineas.map((l) => (
+            <View key={l.producto.id} style={styles.linea}>
+              <View style={styles.lineaTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lineaNombre}>{l.producto.nombre}</Text>
+                  {!!detalle(l.producto) && <Text style={styles.sub}>{detalle(l.producto)}</Text>}
+                  <Text style={styles.sub}>Precio: {clp(Number(l.producto.precio_venta))}</Text>
                 </View>
-
-                <View style={styles.lineaFila}>
-                  <Text style={styles.labelChico}>Cantidad</Text>
-                  <View style={styles.stepper}>
-                    <Pressable style={styles.stepBtn} onPress={() => cambiarCantidad(l, -1)}><Ionicons name="remove" size={18} color={Palette.navy} /></Pressable>
-                    <Text style={styles.stepNum}>{l.cantidad}</Text>
-                    <Pressable style={styles.stepBtn} onPress={() => cambiarCantidad(l, 1)}><Ionicons name="add" size={18} color={Palette.navy} /></Pressable>
-                  </View>
+                <Pressable onPress={() => quitar(l.producto.id)} hitSlop={8}>
+                  <Ionicons name="close-circle-outline" size={22} color={Palette.textFaint} />
+                </Pressable>
+              </View>
+              <View style={styles.lineaFila}>
+                <View style={styles.stepper}>
+                  <Pressable style={styles.stepBtn} onPress={() => cambiarCantidad(l, -1)}><Ionicons name="remove" size={18} color={Palette.navy} /></Pressable>
+                  <Text style={styles.stepNum}>{l.cantidad}</Text>
+                  <Pressable style={styles.stepBtn} onPress={() => cambiarCantidad(l, 1)}><Ionicons name="add" size={18} color={Palette.navy} /></Pressable>
                 </View>
+                <Text style={styles.subtotal}>{clp(Number(l.producto.precio_venta) * l.cantidad)}</Text>
+              </View>
+            </View>
+          ))}
 
-                <View style={styles.lineaFila}>
-                  <Text style={styles.labelChico}>Descuento</Text>
-                  <View style={styles.descuentoBox}>
-                    <View style={styles.toggle}>
-                      <Pressable style={[styles.toggleOp, l.tipo === 'monto' && styles.toggleActivo]} onPress={() => cambiar(l.producto.id, { tipo: 'monto' })}>
-                        <Text style={[styles.toggleText, l.tipo === 'monto' && styles.toggleTextActivo]}>$</Text>
-                      </Pressable>
-                      <Pressable style={[styles.toggleOp, l.tipo === 'porcentaje' && styles.toggleActivo]} onPress={() => cambiar(l.producto.id, { tipo: 'porcentaje' })}>
-                        <Text style={[styles.toggleText, l.tipo === 'porcentaje' && styles.toggleTextActivo]}>%</Text>
-                      </Pressable>
-                    </View>
-                    <TextInput style={styles.inputChico} value={l.valor} keyboardType="numeric"
-                      onChangeText={(t) => cambiar(l.producto.id, { valor: t.replace(/\D/g, '') })}
-                      placeholder="0" placeholderTextColor={Palette.textFaint} />
-                  </View>
-                </View>
-
-                {descuentoInvalido(l) && <Text style={styles.error}>El descuento no puede superar el precio.</Text>}
-                {necesita && !cubierta && !descuentoInvalido(l) && (
-                  <View style={styles.alertaBox}>
-                    <Text style={styles.alertaText}>Supera el {LIMITE_CASERO}% ({pct.toFixed(1)}%). Necesita aprobación del gerente.</Text>
-                    <Pressable style={styles.botonChico} onPress={() => solicitarDescuento(l)}>
-                      <Text style={styles.botonChicoText}>Solicitar</Text>
+          {/* Descuento sobre el total de la compra (si el trabajador puede hacer descuentos) */}
+          {lineas.length > 0 && puedeDescontar && (
+            <View style={styles.linea}>
+              <View style={styles.lineaFila}>
+                <Text style={styles.lineaNombre}>Descuento sobre el total</Text>
+                <View style={styles.descuentoBox}>
+                  <View style={styles.toggle}>
+                    <Pressable style={[styles.toggleOp, descTipo === 'monto' && styles.toggleActivo]} onPress={() => setDescTipo('monto')}>
+                      <Text style={[styles.toggleText, descTipo === 'monto' && styles.toggleTextActivo]}>$</Text>
+                    </Pressable>
+                    <Pressable style={[styles.toggleOp, descTipo === 'porcentaje' && styles.toggleActivo]} onPress={() => setDescTipo('porcentaje')}>
+                      <Text style={[styles.toggleText, descTipo === 'porcentaje' && styles.toggleTextActivo]}>%</Text>
                     </Pressable>
                   </View>
-                )}
-                {necesita && !!cubierta && <Text style={styles.okTexto}>Descuento aprobado por el gerente.</Text>}
-
-                <View style={styles.lineaFila}>
-                  <Text style={styles.sub}>{clp(final)} c/u</Text>
-                  <Text style={styles.subtotal}>{clp(final * l.cantidad)}</Text>
+                  <TextInput style={styles.inputChico} value={descValor} keyboardType="numeric"
+                    onChangeText={(t) => setDescValor(t.replace(/\D/g, ''))} placeholder="0" placeholderTextColor={Palette.textFaint} />
                 </View>
               </View>
-            )
-          })}
+              {!soyGerente && <Text style={styles.sub}>Puedes descontar hasta {textoLimite} sin pedir aprobación.</Text>}
+              {descuentoInvalido && <Text style={styles.error}>El descuento no puede ser igual o mayor al total.</Text>}
+              {excedeLimite && !solicitudQueCubre && !descuentoInvalido && (
+                <View style={styles.alertaBox}>
+                  <Text style={styles.alertaText}>Supera tu límite ({pctDesc.toFixed(1)}%). Necesita aprobación del gerente.</Text>
+                  <Pressable style={styles.botonChico} onPress={solicitarDescuento}>
+                    <Text style={styles.botonChicoText}>Solicitar</Text>
+                  </Pressable>
+                </View>
+              )}
+              {excedeLimite && !!solicitudQueCubre && <Text style={styles.okTexto}>Descuento aprobado por el gerente.</Text>}
+            </View>
+          )}
 
           {lineas.length > 0 && (
             <View style={styles.totales}>
               <Fila etiqueta="Subtotal" valor={clp(subtotalLista)} />
-              {descuentos > 0 && <Fila etiqueta="Descuentos" valor={`- ${clp(descuentos)}`} />}
+              {descuento > 0 && <Fila etiqueta="Descuento" valor={`- ${clp(descuento)}`} />}
               <Fila etiqueta="Total" valor={clp(total)} fuerte />
             </View>
           )}
 
           <Text style={styles.label}>Forma de pago</Text>
           <View style={styles.toggleGrande}>
-            <Pressable style={[styles.toggleGOp, modo === 'contado' && styles.toggleGActivo]} onPress={() => setModo('contado')}>
-              <Text style={[styles.toggleGText, modo === 'contado' && styles.toggleGTextActivo]}>Al contado</Text>
-            </Pressable>
-            <Pressable style={[styles.toggleGOp, modo === 'credito' && styles.toggleGActivo]} onPress={() => setModo('credito')}>
-              <Text style={[styles.toggleGText, modo === 'credito' && styles.toggleGTextActivo]}>A crédito</Text>
-            </Pressable>
+            {permisos.tipo_venta !== 'credito' && (
+              <Pressable style={[styles.toggleGOp, modo === 'contado' && styles.toggleGActivo]} onPress={() => setModo('contado')}>
+                <Text style={[styles.toggleGText, modo === 'contado' && styles.toggleGTextActivo]}>Al contado</Text>
+              </Pressable>
+            )}
+            {permisos.tipo_venta !== 'contado' && (
+              <Pressable style={[styles.toggleGOp, modo === 'credito' && styles.toggleGActivo]} onPress={() => setModo('credito')}>
+                <Text style={[styles.toggleGText, modo === 'credito' && styles.toggleGTextActivo]}>A crédito</Text>
+              </Pressable>
+            )}
           </View>
 
           {modo === 'credito' && (
@@ -404,7 +414,7 @@ const RegistrarVenta = () => {
             data={clientes}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: 16 }}
-            ListEmptyComponent={<Text style={styles.vacio}>No hay clientes registrados.</Text>}
+            ListEmptyComponent={<Text style={styles.vacio}>{soyGerente ? 'No hay clientes registrados.' : 'No tienes clientes en tu ruta de hoy. El gerente te los asigna.'}</Text>}
             renderItem={({ item }) => (
               <Pressable style={styles.opcion} onPress={() => { setCliente(item); setModalCliente(false) }}>
                 <Text style={styles.opcionTexto}>{item.nombre}</Text>

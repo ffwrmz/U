@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaRuta from '@/components/MapaRuta'
@@ -43,10 +44,11 @@ const MiRuta = () => {
       const j = await obtenerOCrearJornadaHoy(false)
       // Con la ruta iniciada se trabaja en la pantalla Ruta en curso (mapa + botones rápidos)
       // La ruta está en curso si la inició el gerente (jornada) o el propio casero (jornada_vendedores)
-      const miEstado = j ? estadoRutaDe(j, await listarEstadosCaseros(j.id), user.id) : undefined
+      const dueñoRuta = await principalDe(user.id) // ruta del equipo del furgón
+      const miEstado = j ? estadoRutaDe(j, await listarEstadosCaseros(j.id), dueñoRuta) : undefined
       if (miEstado === 'en_curso') { router.replace('/ruta-en-curso' as any); return }
       setJornada(j)
-      setParadas(j ? await listarParadas(j.id, user.id) : [])
+      setParadas(j ? await listarParadas(j.id, dueñoRuta) : [])
       setError(null)
     } catch (e: any) {
       setError(e.message ?? String(e))
@@ -141,7 +143,7 @@ const MiRuta = () => {
             const c = p.cliente
             const ocupado = marcando === p.id
             return (
-              <View style={[styles.card, p.estado !== 'pendiente' && { opacity: 0.85 }]}>
+              <View style={[styles.card, { borderLeftWidth: 4, borderLeftColor: p.estado === 'visitado' ? Palette.green : p.estado === 'no_estaba' ? Palette.amber : Palette.navy }, p.estado !== 'pendiente' && { opacity: 0.85 }]}>
                 <View style={styles.cardTop}>
                   <View style={[styles.numero, { backgroundColor: e.fondo }]}>
                     <Text style={[styles.numeroText, { color: e.color }]}>{index + 1}</Text>
@@ -149,6 +151,7 @@ const MiRuta = () => {
                   <Pressable style={{ flex: 1, gap: 3 }} disabled={!c}
                     onPress={() => c && router.push({ pathname: '/cliente/[id]', params: { id: c.id } } as any)}>
                     <Text style={styles.nombre} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                    {p.fuera_de_ruta && <Text style={styles.fueraRuta}>Fuera de ruta</Text>}
                     {c && <DireccionCliente c={c} />}
                   </Pressable>
                   {c && tieneWhatsapp(c.telefono) ? (
@@ -209,6 +212,7 @@ const MiRuta = () => {
 }
 
 const styles = StyleSheet.create({
+  fueraRuta: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '800', color: Palette.lilac, backgroundColor: Palette.lilacSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: Palette.cream },
   content: { padding: 16, gap: 10, paddingBottom: 40 },
   resumen: { backgroundColor: Palette.navy, borderRadius: 18, padding: 16 },

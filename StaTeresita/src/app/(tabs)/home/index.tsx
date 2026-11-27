@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
@@ -6,6 +7,8 @@ import MapaClientes from '@/components/MapaClientes'
 import { ubicacionesDeClientes } from '@/lib/mapa'
 import { ClienteRuta, estadoRutaDe, Jornada, listarEstadosCaseros, listarParadas, obtenerOCrearJornadaHoy, SELECT_CLIENTE, textoEstadoJornada } from '@/lib/rutas'
 import { contarPendientes, escucharCorrecciones } from '@/lib/correcciones'
+import { Permisos, permisosDe } from '@/lib/ajustes'
+import { contarResueltasNoVistas } from '@/lib/misSolicitudes'
 import { contarNoLeidas, escucharNotificaciones } from '@/lib/notificaciones'
 import { clp } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -14,6 +17,15 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+// Accesos rápidos agrupados, un color por grupo: fondo suave, círculo del ícono en el color fuerte y texto legible
+const GRUPO = {
+  hoy: { color: Palette.orange, fondo: Palette.orangeSoft, texto: Palette.orangeDark },
+  seguimiento: { color: Palette.navy, fondo: Palette.navySoft, texto: Palette.navy },
+  gestion: { color: Palette.teal, fondo: Palette.tealSoft, texto: Palette.teal },
+  aprobaciones: { color: Palette.lilac, fondo: Palette.lilacSoft, texto: Palette.lilac },
+}
+type Acceso = { t: string; i: keyof typeof Ionicons.glyphMap; ruta: string; ver?: boolean; badge?: number }
 
 const MODO_PRUEBAS = __DEV__ || process.env.EXPO_PUBLIC_MODO_PRUEBAS === '1'
 
@@ -40,16 +52,29 @@ const HomeScreen = () => {
   const [misClientes, setMisClientes] = useState<string[]>([])
   const [vistaMapa, setVistaMapa] = useState<'todos' | 'asignados'>('todos')
   const soyGerente = esGerente(rolUsuario)
+  // Permisos del trabajador (Ajustes): ocultan los accesos que no puede usar
+  const [permisos, setPermisos] = useState<Permisos>(permisosDe(null))
   // Solicitudes de corrección pendientes (campana del gerente; en tiempo real y al volver a la pantalla)
   const [correccionesPendientes, setCorreccionesPendientes] = useState(0)
   const esDueno = rolUsuario === 'dueno'
+  // Todo lo que espera aprobación del gerente: correcciones + descuentos + inventario
+  const contarAprobaciones = useCallback(async () => {
+    const [c, d, i] = await Promise.all([
+      contarPendientes(),
+      supabase.from('solicitudes_descuento').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente').then((r) => (r.error ? 0 : r.count ?? 0)),
+      supabase.from('solicitudes_inventario').select('id', { count: 'exact', head: true }).eq('estado', 'pendiente').then((r) => (r.error ? 0 : r.count ?? 0)),
+    ])
+    setCorreccionesPendientes(c + d + i)
+  }, [])
+  const [resueltasNoVistas, setResueltasNoVistas] = useState(0)
   useFocusEffect(useCallback(() => {
-    if (esDueno) contarPendientes().then(setCorreccionesPendientes)
-  }, [esDueno]))
+    if (esDueno) contarAprobaciones()
+    else if (rolUsuario) contarResueltasNoVistas().then(setResueltasNoVistas)
+  }, [esDueno, rolUsuario, contarAprobaciones]))
   useEffect(() => {
     if (!esDueno) return
-    return escucharCorrecciones(() => { contarPendientes().then(setCorreccionesPendientes) })
-  }, [esDueno])
+    return escucharCorrecciones(() => { contarAprobaciones() })
+  }, [esDueno, contarAprobaciones])
   // Notificaciones sin leer (campana para todos)
   const [noLeidas, setNoLeidas] = useState(0)
   const [miId, setMiId] = useState<string | null>(null)
@@ -67,12 +92,13 @@ const HomeScreen = () => {
       if (user) {
         const { data } = await supabase
           .from('perfiles')
-          .select('rol, nombre')
+          .select('*')
           .eq('id', user.id)
           .single();
         
         if (data) {
           setRolUsuario(data.rol);
+          setPermisos(permisosDe(data));
           setNombreUsuario((data as any).nombre ?? null);
         }
       }
@@ -122,9 +148,11 @@ const HomeScreen = () => {
           const { data: { user } } = await supabase.auth.getUser()
           const j = await obtenerOCrearJornadaHoy(false)
           if (!user || !j) { setMiRuta({ estado: j?.estado ?? null, total: 0, pendientes: 0 }); return }
-          const ps = await listarParadas(j.id, user.id)
+          // La ruta del equipo del furgón (si va con un compañero, es la misma para los dos)
+          const dueñoRuta = await principalDe(user.id)
+          const ps = await listarParadas(j.id, dueñoRuta)
           const est = await listarEstadosCaseros(j.id)
-          setMiRuta({ estado: estadoRutaDe(j, est, user.id) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
+          setMiRuta({ estado: estadoRutaDe(j, est, dueñoRuta) ?? j.estado, total: ps.length, pendientes: ps.filter((p) => p.estado === 'pendiente').length })
           setMisClientes(ps.map((p) => p.cliente_id))
         } catch {
           setMiRuta({ estado: null, total: 0, pendientes: 0 })
@@ -146,14 +174,20 @@ const HomeScreen = () => {
               <View style={{ alignItems: 'flex-start' }}><EstadoSync /></View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
+              {esDueno && (
+                <Pressable onPress={() => router.push('../ajustes')} style={styles.iconButton} accessibilityLabel="Ajustes">
+                  <Ionicons name="settings-outline" size={22} color={Palette.onNavy} />
+                </Pressable>
+              )}
               <Pressable onPress={() => router.push('../notificaciones')} style={styles.iconButton} accessibilityLabel="Notificaciones">
                 <Ionicons name={noLeidas > 0 ? 'notifications' : 'notifications-outline'} size={22} color={Palette.onNavy} />
                 {noLeidas > 0 && (
                   <View style={styles.badge}><Text style={styles.badgeText}>{noLeidas > 99 ? '99+' : noLeidas}</Text></View>
                 )}
               </Pressable>
-              <Pressable onPress={async () => { await supabase.auth.signOut(); router.replace('/') }} style={styles.iconButton} accessibilityLabel="Cerrar sesión">
-                <Ionicons name="log-out-outline" size={22} color={Palette.onNavy} />
+              <Pressable onPress={async () => { await supabase.auth.signOut(); router.replace('/') }} style={styles.salir} accessibilityLabel="Cerrar sesión">
+                <Ionicons name="log-out-outline" size={18} color={Palette.onNavy} />
+                <Text style={styles.salirText}>Salir</Text>
               </Pressable>
             </View>
           </View>
@@ -162,45 +196,12 @@ const HomeScreen = () => {
             <Pressable style={({ pressed }) => [styles.bannerCorr, pressed && styles.cardPressed]} onPress={() => router.push('../solicitudes')}>
               <Ionicons name="alert-circle" size={20} color={Palette.navy} />
               <Text style={styles.bannerCorrText}>
-                Tienes {correccionesPendientes} {correccionesPendientes === 1 ? 'solicitud' : 'solicitudes'} de corrección
+                Tienes {correccionesPendientes} {correccionesPendientes === 1 ? 'solicitud pendiente' : 'solicitudes pendientes'} por aprobar
               </Text>
               <Ionicons name="chevron-forward" size={18} color={Palette.navy} />
             </Pressable>
           )}
 
-          {soyGerente ? (
-            <>
-            <View style={styles.sectionRow}>
-                <Text style={styles.heroJornadaTitle}>Jornada de hoy</Text>
-              </View>
-              <View style={{ height: 14 }} />
-            <View style={styles.gestionRow}>
-                <Pressable
-                  style={({ pressed }) => [styles.gestionCard, styles.gestionMint, pressed && styles.cardPressed]}
-                  onPress={() => router.push('../inventario-gerente')}
-                >
-                  <View style={[styles.gestionIcon, { backgroundColor: Palette.onNavy }]}>
-                    <Ionicons name="cube-outline" size={24} color={Palette.navy} />
-                  </View>
-                  <Text style={styles.gestionTitulo}>Gestionar inventario</Text>
-                  <Text style={styles.gestionSub}>Revisa stock, productos y movimientos.</Text>
-                  <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
-                </Pressable>
-
-                <Pressable
-                  style={({ pressed }) => [styles.gestionCard, styles.gestionLila, pressed && styles.cardPressed]}
-                  onPress={() => router.push('../gestion-ruta')}
-                >
-                  <View style={[styles.gestionIcon, { backgroundColor: Palette.onNavy }]}>
-                    <Ionicons name="map-outline" size={24} color={Palette.navy} />
-                  </View>
-                  <Text style={styles.gestionTitulo}>Gestionar ruta</Text>
-                  <Text style={styles.gestionSub}>Revisa asignaciones, furgones y estado de visitas.</Text>
-                  <Ionicons name="chevron-forward" size={20} color={Palette.onNavyMuted} style={styles.gestionChevron} />
-                </Pressable>
-              </View>
-            </>
-          ) : null}
 
           {rolUsuario && !soyGerente && (
             <View style={[styles.sectionRow, { marginBottom: 14 }]}>
@@ -222,7 +223,7 @@ const HomeScreen = () => {
                 <Ionicons name="chevron-forward" size={18} color={Palette.onNavyMuted} />
               </View>
               <Text style={styles.summaryBig}>
-                {miRuta.total === 0 ? 'Sin clientes asignados' : `${miRuta.pendientes} de ${miRuta.total} por visitar`}
+                {miRuta.total === 0 ? 'Sin clientes asignados' : `${miRuta.total - miRuta.pendientes} de ${miRuta.total} visitados`}
               </Text>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${miRuta.total ? ((miRuta.total - miRuta.pendientes) / miRuta.total) * 100 : 0}%` }]} />
@@ -232,137 +233,60 @@ const HomeScreen = () => {
         </View>
 
         <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Accesos rápidos</Text>
-
-          <View style={styles.quickRow}>
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-cliente')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="person-add-outline" size={24} color={Palette.navy} />
+          {soyGerente ? (
+            <>
+              <Grupo titulo="Hoy" g="hoy" grande router={router} items={[
+                { t: 'Asignar clientes', i: 'map-outline', ruta: '../gestion-ruta' },
+                { t: 'Registrar venta', i: 'cart-outline', ruta: '../registrar-venta' },
+                { t: 'Registrar pago', i: 'cash-outline', ruta: '../registrar-pago' },
+                { t: 'Nuevo cliente', i: 'person-add-outline', ruta: '../registrar-cliente' },
+              ]} />
+              <Grupo titulo="Seguimiento" g="seguimiento" router={router} items={[
+                { t: 'Seguimiento', i: 'navigate-circle-outline', ruta: '../seguimiento' },
+                { t: 'Calendario', i: 'calendar-outline', ruta: '../calendario' },
+                { t: 'Historial', i: 'receipt-outline', ruta: '../ver-historial' },
+              ]} />
+              <Grupo titulo="Gestión" g="gestion" router={router} items={[
+                { t: 'Clientes', i: 'people-outline', ruta: '../clientes' },
+                { t: 'Trabajadores', i: 'people', ruta: '../trabajadores' },
+                { t: 'Inventario', i: 'cube-outline', ruta: '../inventario-gerente' },
+                { t: 'Zonas', i: 'location-outline', ruta: '../zonas' },
+              ]} />
+              <Grupo titulo="Aprobaciones" g="aprobaciones" router={router} items={[
+                { t: 'Solicitudes', i: 'mail-unread-outline', ruta: '../solicitudes', badge: correccionesPendientes },
+              ]} />
+            </>
+          ) : rolUsuario ? (
+            <>
+              <Grupo titulo="Mi trabajo" g="hoy" grande router={router} items={[
+                { t: 'Vender', i: 'cart-outline', ruta: '../registrar-venta', ver: permisos.puede_vender },
+                { t: 'Cobrar', i: 'cash-outline', ruta: '../registrar-pago', ver: permisos.puede_cobrar },
+                { t: 'Mi inventario', i: 'cube-outline', ruta: '../mi-inventario' },
+                { t: 'Trabajadores', i: 'people', ruta: '../trabajadores' },
+              ]} />
+              <View style={styles.enlaces}>
+                {permisos.puede_crear_clientes && (
+                  <Pressable style={styles.enlace} onPress={() => router.push('../registrar-cliente')}>
+                    <Ionicons name="person-add-outline" size={16} color={Palette.navy} />
+                    <Text style={styles.enlaceText}>Nuevo cliente</Text>
+                  </Pressable>
+                )}
+                <Pressable style={styles.enlace} onPress={() => router.push('../mis-solicitudes')}>
+                  <Ionicons name="mail-outline" size={16} color={Palette.navy} />
+                  <Text style={styles.enlaceText}>Mis solicitudes</Text>
+                  {resueltasNoVistas > 0 && <View style={styles.globito}><Text style={styles.globitoText}>{resueltasNoVistas}</Text></View>}
+                </Pressable>
               </View>
-              <Text style={styles.quickText}>Nuevo cliente</Text>
+            </>
+          ) : null}
+
+          {/* Solo para pruebas: en la app instalada no aparece, salvo con EXPO_PUBLIC_MODO_PRUEBAS=1 */}
+          {MODO_PRUEBAS && esDueno && (
+            <Pressable style={styles.depuracion} onPress={() => reiniciarDia(jornada?.id, () => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) })}>
+              <Ionicons name="bug-outline" size={16} color={Palette.textMuted} />
+              <Text style={styles.depuracionText}>Depuración del día</Text>
             </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-venta')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="cart-outline" size={24} color={Palette.navy} />
-              </View>
-              <Text style={styles.quickText}>Registrar venta</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../clientes')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                <Ionicons name="people-outline" size={24} color={Palette.navy} />
-              </View>
-              <Text style={styles.quickText}>Clientes</Text>
-            </Pressable>
-
-            {/* Registrar pago: oculto para el gerente (paga desde la ficha de cada cliente) */}
-            {!soyGerente && (
-            <Pressable
-              style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-              onPress={() => router.push('../registrar-pago')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
-                <Ionicons name="cash-outline" size={24} color={Palette.green} />
-              </View>
-              <Text style={styles.quickText}>Registrar pago</Text>
-            </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../ver-historial')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
-                  <Ionicons name="time-outline" size={24} color={Palette.orange} />
-                </View>
-                <Text style={styles.quickText}>Historial</Text>
-              </Pressable>
-            )}
-
-            {/* Solo para pruebas: en la app instalada no aparece, salvo con EXPO_PUBLIC_MODO_PRUEBAS=1 */}
-            {MODO_PRUEBAS && rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, { borderColor: Palette.orange, borderStyle: 'dashed', borderWidth: 1.5 }, pressed && styles.cardPressed]}
-                onPress={() => reiniciarDia(jornada?.id, () => { obtenerOCrearJornadaHoy(true).then(setJornada).catch(() => {}) })}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
-                  <Ionicons name="bug-outline" size={24} color={Palette.orange} />
-                </View>
-                <Text style={styles.quickText}>Depuración del día</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../calendario')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.amberSoft }]}>
-                  <Ionicons name="calendar-outline" size={24} color={Palette.orange} />
-                </View>
-                <Text style={styles.quickText}>Calendario</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../seguimiento')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="navigate-circle-outline" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Seguimiento</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../trabajadores')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="people" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Trabajadores</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../zonas')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.greenSoft }]}>
-                  <Ionicons name="map-outline" size={24} color={Palette.green} />
-                </View>
-                <Text style={styles.quickText}>Zonas</Text>
-              </Pressable>
-            )}
-
-            {rolUsuario === 'dueno' && (
-              <Pressable
-                style={({ pressed }) => [styles.quick, pressed && styles.cardPressed]}
-                onPress={() => router.push('../solicitudes-descuento')}
-              >
-                <View style={[styles.quickIcon, { backgroundColor: Palette.navySoft }]}>
-                  <Ionicons name="pricetag-outline" size={24} color={Palette.navy} />
-                </View>
-                <Text style={styles.quickText}>Descuentos</Text>
-              </Pressable>
-            )}
-          </View>
+          )}
 
           {!!rolUsuario && (() => {
             // Dos vistas: todos los clientes, o solo los asignados hoy a mi ruta
@@ -391,7 +315,7 @@ const HomeScreen = () => {
                 {/* Leyenda: verde al día, amarillo con deuda */}
                 <View style={styles.leyendaMapa}>
                   <View style={styles.leyendaItem}>
-                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.green, borderColor: '#FFFFFF' }]} />
+                    <View style={[styles.leyendaPunto, { backgroundColor: Palette.green, borderColor: Palette.white }]} />
                     <Text style={styles.leyendaText}>{conUbicacion - conDeudaMapa} al día</Text>
                   </View>
                   <View style={styles.leyendaItem}>
@@ -404,7 +328,8 @@ const HomeScreen = () => {
             )
           })()}
 
-          {/* Lista de clientes: el gerente ve solo 5 (primero los que más deben) y un enlace a Clientes */}
+          {/* Lista de clientes con más deuda: solo para el casero (el gerente tiene el mapa y el acceso a Clientes) */}
+          {!soyGerente && (
           <>
           <View style={styles.sectionRow}>
             <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Clientes con más deuda</Text>
@@ -422,7 +347,7 @@ const HomeScreen = () => {
           {[...clientes].sort((a, b) => (deudas[b.id] || 0) - (deudas[a.id] || 0) || a.nombre.localeCompare(b.nombre, 'es')).slice(0, 5).map((c, i) => {
             const deuda = deudas[c.id] || 0
             return (
-              <View key={c.id} style={styles.clienteRow}>
+              <View key={c.id} style={[styles.clienteRow, { borderLeftWidth: 4, borderLeftColor: deuda > 0 ? Palette.orange : Palette.green }]}>
                 <View style={styles.numero}>
                   <Text style={styles.numeroText}>{i + 1}</Text>
                 </View>
@@ -452,13 +377,54 @@ const HomeScreen = () => {
             )
           })}
           </>
+          )}
         </View>
       </ScrollView>
     </View>
   )
 }
 
+// Grupo de accesos: título chico en mayúsculas y botones del color del grupo.
+// "grande": 2 columnas con ícono y texto al lado; si no, 3 columnas con el ícono arriba.
+const Grupo = ({ titulo, g, items, grande, router }: { titulo: string; g: keyof typeof GRUPO; items: Acceso[]; grande?: boolean; router: ReturnType<typeof useRouter> }) => {
+  const c = GRUPO[g]
+  const visibles = items.filter((a) => a.ver !== false)
+  if (visibles.length === 0) return null
+  return (
+    <View style={{ gap: 8, marginBottom: 6 }}>
+      <Text style={[styles.grupoTitulo, { color: c.texto }]}>{titulo}</Text>
+      <View style={styles.grupoFila}>
+        {visibles.map((a) => (
+          <Pressable key={a.t} style={({ pressed }) => [grande ? styles.accesoGrande : styles.accesoChico, { backgroundColor: c.fondo }, pressed && styles.cardPressed]}
+            onPress={() => router.push(a.ruta as any)}>
+            <View style={[grande ? styles.accesoIconoGrande : styles.accesoIcono, { backgroundColor: c.color }]}>
+              <Ionicons name={a.i} size={grande ? 24 : 26} color={Palette.onNavy} />
+            </View>
+            <Text style={[grande ? styles.accesoTextoGrande : styles.accesoTexto, { color: c.texto }]} numberOfLines={2}>{a.t}</Text>
+            {!!a.badge && a.badge > 0 && <View style={styles.globito}><Text style={styles.globitoText}>{a.badge > 99 ? '99+' : a.badge}</Text></View>}
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
+  grupoTitulo: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4 },
+  grupoFila: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  accesoGrande: { width: '48%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 18, padding: 14, minHeight: 72 },
+  accesoIconoGrande: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  accesoTextoGrande: { flex: 1, fontSize: 15, fontWeight: '800' },
+  accesoChico: { width: '31%', flexGrow: 1, alignItems: 'center', gap: 8, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 6 },
+  accesoIcono: { width: 50, height: 50, borderRadius: 25, alignItems: 'center', justifyContent: 'center' },
+  accesoTexto: { fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  globito: { position: 'absolute', top: 6, right: 6, minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: Palette.orange, alignItems: 'center', justifyContent: 'center' },
+  globitoText: { color: Palette.onNavy, fontSize: 12, fontWeight: '900' },
+  enlaces: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  enlace: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, paddingRight: 30 },
+  enlaceText: { fontSize: 14, fontWeight: '700', color: Palette.navy },
+  depuracion: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 6 },
+  depuracionText: { fontSize: 12, color: Palette.textMuted, textDecorationLine: 'underline' },
   container: {
     flex: 1,
     backgroundColor: Palette.cream,
@@ -482,6 +448,8 @@ const styles = StyleSheet.create({
   badgeText: { color: Palette.onNavy, fontSize: 10, fontWeight: '800' },
   bannerCorr: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.yellow, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14 },
   bannerCorrText: { flex: 1, fontSize: 14, fontWeight: '800', color: Palette.navy },
+  salir: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 40, borderRadius: 20, paddingHorizontal: 12, backgroundColor: Palette.orange },
+  salirText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
   iconButton: {
     width: 40,
     height: 40,
@@ -506,15 +474,7 @@ const styles = StyleSheet.create({
   },
   progressFill: { height: 8, borderRadius: 4, backgroundColor: Palette.orange },
   heroJornadaTitle: { fontSize: 13, fontWeight: '700', color: Palette.onNavyMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
-  gestionRow: { flexDirection: 'row', gap: 10 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  gestionChevron: { position: 'absolute', top: 14, right: 12 },
-  gestionCard: { flex: 1, gap: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.20)', backgroundColor: Palette.onNavyFill, padding: 14, minHeight: 148 },
-  gestionMint: {},
-  gestionLila: {},
-  gestionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  gestionTitulo: { fontSize: 16, fontWeight: '800', color: Palette.onNavy },
-  gestionSub: { fontSize: 12, lineHeight: 16, color: Palette.onNavyMuted },
   actionsContainer: {
     padding: 20,
     gap: 12,
@@ -532,31 +492,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: Palette.textMuted,
+    color: Palette.navy,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  quick: {
-    width: '47.5%',
-    flexGrow: 1,
-    backgroundColor: Palette.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Palette.border,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  quickIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickText: { flex: 1, fontSize: 14, fontWeight: '700', color: Palette.text },
   cardPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.98 }],

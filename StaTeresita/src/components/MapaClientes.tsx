@@ -5,11 +5,9 @@
 import { Palette } from "@/constants/palette";
 import { Ionicons } from "@expo/vector-icons";
 import { clp } from "@/lib/format";
-import { alCambiarConexion, hayConexion } from "@/lib/offline/red";
-import { Paths } from "expo-file-system";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Platform, StyleSheet, Text, View } from "react-native";
-import MapView, { Marker, Polyline, UrlTile } from "react-native-maps";
+import { useCallback, useEffect, useRef } from "react";
+import { Alert, StyleSheet, Text, View } from "react-native";
+import MapView, { MapStyleElement, Marker, Polyline } from "react-native-maps";
 import {
   CENTRO_INICIAL,
   colorDe,
@@ -18,12 +16,15 @@ import {
   titulo,
 } from "./mapaClientes.types";
 
-// Mapa de OpenStreetMap con sus cuadros guardados en el teléfono: sin señal se ven los que ya se cargaron antes
-// (no se descargan zonas completas por adelantado).
-const CARPETA_TILES = (() => {
-  try { return `${Paths.cache.uri.replace(/\/?$/, "/")}tiles`; } catch { return undefined; }
-})();
+// Sin puntos de interés (negocios, farmacias, supermercados, paraderos): solo calles y nuestros clientes
+const SIN_LUGARES: MapStyleElement[] = [
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+]
 
+// Mapa base: Google Maps en Android y Apple Maps en iPhone. Sin señal se ven las zonas que el teléfono
+// ya tenía guardadas de antes (el propio mapa las guarda); los puntos y la ruta salen de lo guardado por la app.
+// (No se usan los cuadros de tile.openstreetmap.org: su política no permite apps como esta.)
 export default function MapaClientes({
   ubicaciones,
   onPressCliente,
@@ -40,8 +41,6 @@ export default function MapaClientes({
   norte,
 }: MapaClientesProps) {
   const mapRef = useRef<MapView>(null);
-  const [enLinea, setEnLinea] = useState(hayConexion());
-  useEffect(() => alCambiarConexion(setEnLinea), []);
   const siguiendo = !!seguirme && !!navegacion;
 
   // Seguirme: la cámara va a mi posición, gira según mi rumbo, algo inclinada y a zoom de calle
@@ -102,7 +101,8 @@ export default function MapaClientes({
     <MapView
       ref={mapRef}
       style={styles.map}
-      mapType={Platform.OS === "android" ? "none" : "standard"}
+      customMapStyle={SIN_LUGARES}
+      showsPointsOfInterests={false}
       initialRegion={{
         latitude: CENTRO_INICIAL.latitud,
         longitude: CENTRO_INICIAL.longitud,
@@ -122,15 +122,6 @@ export default function MapaClientes({
         );
       }}
     >
-      <UrlTile
-        urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maximumZ={19}
-        tileCachePath={CARPETA_TILES}
-        tileCacheMaxAge={60 * 60 * 24 * 30}
-        offlineMode={!enLinea}
-        shouldReplaceMapContent
-        zIndex={-1}
-      />
       {trazarRuta && ((trazado?.length ?? 0) > 1 || ubicaciones.length > 1) && (
         <Polyline
           coordinates={(trazado && trazado.length > 1 ? trazado : ubicaciones).map((u) => ({ latitude: u.latitud, longitude: u.longitud }))}
@@ -148,7 +139,7 @@ export default function MapaClientes({
         <Marker coordinate={{ latitude: navegacion.latitud, longitude: navegacion.longitud }} anchor={{ x: 0.5, y: 0.5 }}
           flat rotation={navegacion.rumbo ?? 0} zIndex={30} tracksViewChanges={false} title="Tú estás aquí">
           <View style={styles.flecha}>
-            <Ionicons name="navigate" size={20} color="#FFFFFF" style={{ transform: [{ rotate: "-45deg" }] }} />
+            <Ionicons name="navigate" size={20} color={Palette.white} style={{ transform: [{ rotate: "-45deg" }] }} />
           </View>
         </Marker>
       )}
@@ -180,7 +171,7 @@ export default function MapaClientes({
             }
           >
             {estilo === "punto" && !u.etiqueta ? (
-              <View style={[styles.punto, { backgroundColor: colorDe(u, Palette.green, Palette.yellow), borderColor: deuda > 0 ? Palette.yellowBorder : "#FFFFFF" }]} />
+              <View style={[styles.punto, { backgroundColor: colorDe(u, Palette.green, Palette.yellow), borderColor: deuda > 0 ? Palette.yellowBorder : Palette.white }]} />
             ) : u.etiqueta ? (
               <View style={[styles.numero, { backgroundColor: colorDe(u, Palette.green, Palette.amber) }, u.id === seleccionId && styles.numeroSel]}>
                 <Text style={styles.numeroText}>{u.etiqueta}</Text>
@@ -195,10 +186,10 @@ export default function MapaClientes({
 
 const styles = StyleSheet.create({
   map: { width: "100%", height: "100%" },
-  numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF" },
-  numeroText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  numero: { minWidth: 28, height: 28, borderRadius: 14, paddingHorizontal: 6, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: Palette.white },
+  numeroText: { color: Palette.white, fontWeight: "800", fontSize: 13 },
   punto: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
-  yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF" },
-  flecha: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#2F80ED", borderWidth: 3, borderColor: "#FFFFFF", alignItems: "center", justifyContent: "center" },
+  yo: { width: 18, height: 18, borderRadius: 9, backgroundColor: Palette.ubicacion, borderWidth: 3, borderColor: Palette.white },
+  flecha: { width: 34, height: 34, borderRadius: 17, backgroundColor: Palette.ubicacion, borderWidth: 3, borderColor: Palette.white, alignItems: "center", justifyContent: "center" },
   numeroSel: { minWidth: 38, height: 38, borderRadius: 19, borderWidth: 3, borderColor: Palette.orange },
 });

@@ -235,6 +235,7 @@ export const describir = (metodo: string, url: string, cuerpo: any): string => {
   if (t === 'ruta_paradas' && metodo === 'PATCH') return cuerpo?.estado === 'visitado' ? 'Visita: Estaba' : cuerpo?.estado === 'no_estaba' ? 'Visita: No estaba' : 'Visita: pendiente'
   if (t === 'solicitudes_correccion') return 'Solicitud de corrección'
   if (t === 'solicitudes_descuento') return 'Solicitud de descuento'
+  if (t === 'solicitudes_inventario') return 'Solicitud de inventario'
   if (t === 'notificaciones') return 'Notificación leída'
   return `${metodo === 'POST' ? 'Guardar' : metodo === 'PATCH' ? 'Cambiar' : 'Borrar'} en ${t}`
 }

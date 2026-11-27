@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import EstadoSync from '@/components/EstadoSync'
 import { Palette } from '@/constants/palette'
-import { supabase } from '@/lib/supabase'
 
 
 interface HeaderProps {
@@ -23,11 +22,6 @@ const Header = (props: HeaderProps) => {
     }
   }
 
-  const cerrarSesion = async () => {
-    await supabase.auth.signOut()
-    router.replace('/')
-  }
-
   return (
     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
       <Pressable onPress={volver} style={styles.iconButton}>
@@ -40,9 +34,8 @@ const Header = (props: HeaderProps) => {
         <EstadoSync />
       </View>
 
-      <Pressable onPress={cerrarSesion} style={styles.iconButton}>
-        <Ionicons size={22} color={Palette.onNavy} name='log-out-outline' />
-      </Pressable>
+      {/* Cerrar sesión solo está en el inicio */}
+      <View style={styles.iconButtonVacio} />
     </View>
   )
 }
@@ -67,6 +60,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconButtonVacio: { width: 40, height: 40 },
   subtitle: { fontSize: 12, color: Palette.onNavyMuted, marginTop: 1 },
   title: {
     fontSize: 18,

@@ -165,7 +165,7 @@ export default function MapaClientes({
               style={{
                 width: 16, height: 16, borderRadius: 8, boxSizing: "border-box", cursor: "pointer",
                 background: colorDe(u, Palette.green, Palette.yellow),
-                border: `2px solid ${u.clientes.some((c) => c.deuda > 0) ? Palette.yellowBorder : "#fff"}`,
+                border: `2px solid ${u.clientes.some((c) => c.deuda > 0) ? Palette.yellowBorder : Palette.white}`,
               }}
             />
           ) : u.etiqueta ? (
@@ -175,8 +175,8 @@ export default function MapaClientes({
                 borderRadius: 19, padding: "0 6px", boxSizing: "border-box",
                 display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
                 background: colorDe(u, Palette.green, Palette.amber),
-                border: u.id === seleccionId ? `3px solid ${Palette.orange}` : "2px solid #fff",
-                color: "#fff", fontWeight: 800, fontSize: 13, fontFamily: "system-ui, sans-serif",
+                border: u.id === seleccionId ? `3px solid ${Palette.orange}` : `2px solid ${Palette.white}`,
+                color: Palette.white, fontWeight: 800, fontSize: 13, fontFamily: "system-ui, sans-serif",
               }}
             >
               {u.etiqueta}
@@ -187,7 +187,7 @@ export default function MapaClientes({
 
       {listo && posicion && (
         <Marker longitude={posicion.longitud} latitude={posicion.latitud} anchor="center">
-          <div title={posicion.titulo ?? "Posición"} style={{ width: 16, height: 16, borderRadius: 8, background: "#2F80ED", border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(47,128,237,0.25)" }} />
+          <div title={posicion.titulo ?? "Posición"} style={{ width: 16, height: 16, borderRadius: 8, background: Palette.ubicacion, border: `3px solid ${Palette.white}`, boxShadow: `0 0 0 6px ${Palette.ubicacionHalo}` }} />
         </Marker>
       )}
 
@@ -196,8 +196,8 @@ export default function MapaClientes({
           <div
             title="Tú estás aquí"
             style={{
-              width: 16, height: 16, borderRadius: 8, background: "#2F80ED",
-              border: "3px solid #fff", boxShadow: "0 0 0 6px rgba(47,128,237,0.25)",
+              width: 16, height: 16, borderRadius: 8, background: Palette.ubicacion,
+              border: `3px solid ${Palette.white}`, boxShadow: `0 0 0 6px ${Palette.ubicacionHalo}`,
             }}
           />
         </Marker>

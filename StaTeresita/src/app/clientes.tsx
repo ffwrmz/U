@@ -65,7 +65,7 @@ const Clientes = () => {
             const deuda = deudaDe(item.id)
             return (
               <Pressable
-                style={({ pressed }) => [styles.card, pressed && { opacity: 0.8 }]}
+                style={({ pressed }) => [styles.card, { borderLeftWidth: 4, borderLeftColor: deuda > 0 ? Palette.orange : Palette.green }, pressed && { opacity: 0.8 }]}
                 onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: item.id } } as any)}
               >
                 <View style={styles.avatar}>

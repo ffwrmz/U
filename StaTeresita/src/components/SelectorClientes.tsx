@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 13, fontWeight: '800', color: Palette.orange },
   linkNavy: { fontSize: 13, fontWeight: '800', color: Palette.navy },
   revision: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.cream },
-  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  capa: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: Palette.overlay, justifyContent: 'flex-end' },
   hoja: { backgroundColor: Palette.cream, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, paddingBottom: 32, gap: 12 },
   hojaTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },
   opcionHoja: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },

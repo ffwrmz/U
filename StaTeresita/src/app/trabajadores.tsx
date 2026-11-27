@@ -2,7 +2,9 @@ import Header from '@/components/Header'
 import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { esGerente } from '@/lib/roles'
-import { normalizarTelefono } from '@/lib/format'
+import { Companero, listarEquipo } from '@/lib/ajustes'
+import { normalizarTelefono, telefonoLocal } from '@/lib/format'
+import { abrirWhatsApp, tieneWhatsapp } from '@/lib/whatsapp'
 import { formatearRut, normalizarRut, rutValido } from '@/lib/rut'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -11,7 +13,7 @@ import { useCallback, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-interface Trabajador { id: string; nombre: string; rol: string; activo?: boolean | null; email?: string | null; telefono?: string | null; rut?: string | null }
+interface Trabajador { id: string; nombre: string; rol: string; activo?: boolean | null; telefono?: string | null; rut?: string | null }
 type Filtro = 'activos' | 'inactivos' | 'todos'
 
 const ROLES = [
@@ -54,13 +56,15 @@ const Trabajadores = () => {
   const [soyGerente, setSoyGerente] = useState(false)
   const [yo, setYo] = useState<string | null>(null)
   const [lista, setLista] = useState<Trabajador[]>([])
+  // El casero ve solo los nombres y el botón de WhatsApp de sus compañeros
+  const [equipo, setEquipo] = useState<Companero[]>([])
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<Filtro>('activos')
 
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ nombre: '', rut: '', email: '', password: '', telefono: '', rol: 'vendedor' as 'vendedor' | 'dueno' })
-  // Poner o cambiar el RUT de un trabajador que ya existe
-  const [editarRut, setEditarRut] = useState<{ t: Trabajador; rut: string } | null>(null)
+  const [form, setForm] = useState({ nombre: '', rut: '', password: '', telefono: '', rol: 'vendedor' as 'vendedor' | 'dueno' })
+  // Poner o cambiar el RUT y el teléfono de un trabajador que ya existe
+  const [editarRut, setEditarRut] = useState<{ t: Trabajador; rut: string; telefono: string } | null>(null)
   const [verPassword, setVerPassword] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
@@ -70,8 +74,13 @@ const Trabajadores = () => {
     if (user) {
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       setSoyGerente(esGerente(perfil?.rol))
+      if (!esGerente(perfil?.rol)) {
+        setEquipo(await listarEquipo())
+        setCargando(false)
+        return
+      }
     }
-    // select('*') para que funcione aunque todavía no existan las columnas activo/email
+    // select('*') para que funcione aunque todavía no existan algunas columnas
     const { data, error: e } = await supabase.from('perfiles').select('*').in('rol', ['dueno', 'vendedor']).order('nombre', { ascending: true })
     setError(e?.message ?? null)
     setLista((data as Trabajador[]) || [])
@@ -128,23 +137,21 @@ const Trabajadores = () => {
   }
 
   const abrirNuevo = () => {
-    setForm({ nombre: '', rut: '', email: '', password: generarPassword(), telefono: '', rol: 'vendedor' })
+    setForm({ nombre: '', rut: '', password: generarPassword(), telefono: '', rol: 'vendedor' })
     setVerPassword(false)
     setModal(true)
   }
 
   const crear = async () => {
     const nombre = form.nombre.trim()
-    const email = form.email.trim()
     if (!nombre || !form.rut) { Alert.alert('Error', 'El nombre y el RUT son obligatorios'); return }
     if (!rutValido(form.rut)) { Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza'); return }
-    if (email && !/^\S+@\S+\.\S+$/.test(email)) { Alert.alert('Error', 'Revisa el correo'); return }
     if (form.password.length < 6) { Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres'); return }
     const telefono = form.telefono ? normalizarTelefono(form.telefono) : null
     if (form.telefono && !telefono) { Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)'); return }
     setGuardando(true)
     try {
-      await llamar({ accion: 'crear', nombre, rut: normalizarRut(form.rut), ...(email ? { email } : {}), password: form.password, rol: form.rol, ...(telefono ? { telefono } : {}) })
+      await llamar({ accion: 'crear', nombre, rut: normalizarRut(form.rut), password: form.password, rol: form.rol, ...(telefono ? { telefono } : {}) })
       setModal(false)
       Alert.alert('Trabajador creado', `Pásale estos datos a ${nombre} para que entre a la app:\n\nRUT: ${formatearRut(form.rut)}\nContraseña: ${form.password}`)
       cargar()
@@ -157,17 +164,19 @@ const Trabajadores = () => {
 
   const guardarRut = async () => {
     if (!editarRut) return
-    if (!rutValido(editarRut.rut)) { Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza'); return }
+    if (editarRut.rut && !rutValido(editarRut.rut)) { Alert.alert('Error', 'Revisa el RUT: el dígito verificador no calza'); return }
+    const telefono = editarRut.telefono ? normalizarTelefono(editarRut.telefono) : null
+    if (editarRut.telefono && !telefono) { Alert.alert('Error', 'El celular debe tener 9 dígitos y empezar con 9 (ej. 9 1234 5678)'); return }
     setOcupado(editarRut.t.id)
-    const rut = normalizarRut(editarRut.rut)
-    const { error: e } = await supabase.from('perfiles').update({ rut }).eq('id', editarRut.t.id)
+    const rut = editarRut.rut ? normalizarRut(editarRut.rut) : null
+    const { error: e } = await supabase.from('perfiles').update({ rut, telefono }).eq('id', editarRut.t.id)
     setOcupado(null)
     if (e) {
       Alert.alert('Error', e.code === '23505' ? 'Ese RUT ya lo tiene otro trabajador' : e.code === '42703' || /rut/.test(e.message) && /column/.test(e.message)
         ? 'Falta correr en Supabase el archivo 20261124190000_rut_trabajadores.sql' : e.message)
       return
     }
-    setLista((l) => l.map((x) => (x.id === editarRut.t.id ? { ...x, rut } : x)))
+    setLista((l) => l.map((x) => (x.id === editarRut.t.id ? { ...x, rut, telefono } : x)))
     setEditarRut(null)
   }
 
@@ -180,7 +189,25 @@ const Trabajadores = () => {
       {cargando ? (
         <ActivityIndicator size="large" color={Palette.navy} style={{ marginTop: 40 }} />
       ) : !soyGerente ? (
-        <Text style={styles.vacio}>Solo el gerente puede administrar a los trabajadores.</Text>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.resumen}>Escríbele a un compañero por WhatsApp</Text>
+          {equipo.filter((t) => t.id !== yo).map((t) => (
+            <View key={t.id} style={styles.card}>
+              <View style={[styles.avatar, { backgroundColor: t.rol === 'dueno' ? Palette.navy : Palette.orange }]}>
+                <Text style={styles.avatarText}>{t.nombre.trim().charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nombre} numberOfLines={1}>{t.nombre}</Text>
+                <Text style={styles.sub}>{t.rol === 'dueno' ? 'Gerente' : 'Casero'}{tieneWhatsapp(t.telefono) ? '' : ' · sin teléfono'}</Text>
+              </View>
+              {tieneWhatsapp(t.telefono) && (
+                <Pressable style={styles.wsp} onPress={() => abrirWhatsApp(t.telefono)} hitSlop={6} accessibilityLabel={`Escribirle a ${t.nombre} por WhatsApp`}>
+                  <Ionicons name="logo-whatsapp" size={20} color={Palette.onNavy} />
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
           {error && <Text style={styles.error}>No se pudo cargar: {error}</Text>}
@@ -212,11 +239,11 @@ const Trabajadores = () => {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.nombre} numberOfLines={1}>{t.nombre}{soyYo ? ' (tú)' : ''}</Text>
                   <Text style={styles.sub} numberOfLines={1}>
-                    {t.rol === 'dueno' ? 'Gerente' : 'Casero'}{t.email ? ` · ${t.email}` : ''}
+                    {t.rol === 'dueno' ? 'Gerente' : 'Casero'}
                   </Text>
                   {!!t.telefono && <Text style={styles.sub}>+{t.telefono}</Text>}
-                  <Pressable onPress={() => setEditarRut({ t, rut: t.rut ? formatearRut(t.rut) : '' })} hitSlop={6}>
-                    <Text style={[styles.sub, t.rut ? null : styles.sinRut]}>{t.rut ? `RUT ${formatearRut(t.rut)}` : 'Sin RUT · toca para ponerlo'}</Text>
+                  <Pressable onPress={() => setEditarRut({ t, rut: t.rut ? formatearRut(t.rut) : '', telefono: telefonoLocal(t.telefono) })} hitSlop={6}>
+                    <Text style={[styles.sub, t.rut ? styles.editar : styles.sinRut]}>{t.rut ? `RUT ${formatearRut(t.rut)} · editar` : 'Sin RUT · toca para ponerlo'}</Text>
                   </Pressable>
                   <View style={[styles.badge, { backgroundColor: on ? Palette.greenSoft : Palette.grayPill }]}>
                     <Text style={[styles.badgeText, { color: on ? Palette.green : Palette.textMuted }]}>{on ? 'Activo' : 'Inactivo'}</Text>
@@ -226,6 +253,11 @@ const Trabajadores = () => {
                   <ActivityIndicator size="small" color={Palette.navy} />
                 ) : soyYo ? null : (
                   <>
+                    {tieneWhatsapp(t.telefono) && on && (
+                      <Pressable style={styles.wsp} onPress={() => abrirWhatsApp(t.telefono)} hitSlop={6} accessibilityLabel={`Escribirle a ${t.nombre} por WhatsApp`}>
+                        <Ionicons name="logo-whatsapp" size={20} color={Palette.onNavy} />
+                      </Pressable>
+                    )}
                     <Switch value={on} onValueChange={(v) => cambiarActivo(t, v)}
                       trackColor={{ false: Palette.grayPill, true: Palette.green }} thumbColor={Palette.card} />
                     <Pressable onPress={() => eliminar(t)} hitSlop={8} accessibilityLabel={`Eliminar a ${t.nombre}`}>
@@ -256,10 +288,6 @@ const Trabajadores = () => {
               placeholder="12.345.678-9" placeholderTextColor={Palette.textFaint} editable={!guardando}
               autoCapitalize="characters" autoCorrect={false} maxLength={12} />
 
-            <Text style={styles.label}>Correo (opcional)</Text>
-            <TextInput style={styles.input} value={form.email} onChangeText={(t) => setForm((f) => ({ ...f, email: t }))}
-              placeholder="correo@ejemplo.cl" placeholderTextColor={Palette.textFaint} editable={!guardando}
-              keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
 
             <Text style={styles.label}>Teléfono</Text>
             <TelefonoInput value={form.telefono} onChangeText={(t) => setForm((f) => ({ ...f, telefono: t }))} editable={!guardando} />
@@ -301,10 +329,13 @@ const Trabajadores = () => {
       <Modal visible={!!editarRut} transparent animationType="fade" onRequestClose={() => setEditarRut(null)}>
         <View style={styles.fondo}>
           <View style={styles.caja}>
-            <Text style={styles.modalTitle}>RUT de {editarRut?.t.nombre}</Text>
+            <Text style={styles.modalTitle}>{editarRut?.t.nombre}</Text>
+            <Text style={styles.label}>RUT (con él inicia sesión)</Text>
             <TextInput style={styles.input} value={editarRut?.rut ?? ''} autoFocus
               onChangeText={(t) => setEditarRut((e) => e && { ...e, rut: formatearRut(t) })}
               placeholder="12.345.678-9" placeholderTextColor={Palette.textFaint} autoCapitalize="characters" autoCorrect={false} maxLength={12} />
+            <Text style={styles.label}>Teléfono (para WhatsApp)</Text>
+            <TelefonoInput value={editarRut?.telefono ?? ''} onChangeText={(t) => setEditarRut((e) => e && { ...e, telefono: t })} />
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Pressable style={[styles.cajaBoton, { backgroundColor: Palette.grayPill }]} onPress={() => setEditarRut(null)}>
                 <Text style={[styles.cajaBotonText, { color: Palette.text }]}>Cancelar</Text>
@@ -333,7 +364,9 @@ const styles = StyleSheet.create({
   nombre: { fontSize: 16, fontWeight: '700', color: Palette.text },
   sub: { fontSize: 12, color: Palette.textMuted, marginTop: 1 },
   sinRut: { color: Palette.orange, fontWeight: '700' },
-  fondo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
+  editar: { color: Palette.navy, fontWeight: '700' },
+  wsp: { width: 36, height: 36, borderRadius: 18, backgroundColor: Palette.green, alignItems: 'center', justifyContent: 'center' },
+  fondo: { flex: 1, backgroundColor: Palette.overlay, justifyContent: 'center', padding: 24 },
   caja: { backgroundColor: Palette.cream, borderRadius: 18, padding: 18, gap: 14 },
   cajaBoton: { flex: 1, backgroundColor: Palette.navy, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   cajaBotonText: { color: Palette.onNavy, fontSize: 15, fontWeight: '800' },

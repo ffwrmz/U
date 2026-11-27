@@ -1,0 +1,118 @@
+SANTA TERESITA - CAMBIOS Y FUNCIONALIDADES NUEVAS DE LA APP
+==========================================================
+
+Este documento explica, en palabras simples, qué cambió en la app y cómo se usa ahora.
+"Gerente" es el dueño o administrador; "trabajador" (casero) es quien sale a vender en el furgón.
+
+
+1. INICIO DE SESIÓN
+-------------------
+- Ahora se entra con el RUT, ya no con correo. Se puede escribir con o sin puntos, con guion
+  y dígito verificador (ej. 12.345.678-9). El correo se quitó de los perfiles.
+- La sesión queda abierta en el teléfono: no hay que iniciar sesión cada vez que se abre la app.
+  Solo se cierra si la persona aprieta "Cerrar sesión".
+- El botón "Cerrar sesión" está solo en la pantalla de inicio, con otro color para no apretarlo sin querer.
+- Si el gerente desactiva a un trabajador, a ese trabajador la app lo saca de la sesión
+  automáticamente y ya no puede volver a entrar.
+
+
+2. PANTALLA DE INICIO
+---------------------
+- Los accesos están ordenados en grupos de colores:
+    · Hoy (lo del día), Seguimiento, Gestión y Aprobaciones.
+- Junto a la campana de avisos está el engranaje de Ajustes (solo gerente).
+- Aprobaciones muestra un número con lo que falta revisar (correcciones, descuentos e inventario).
+- Al gerente ya no le aparece la lista de clientes debajo del mapa.
+- El trabajador ve "Mi trabajo", "Nuevo cliente" y "Mis solicitudes".
+
+
+3. NOTIFICACIONES
+-----------------
+- Cuando el gerente le asigna clientes o una ruta a un trabajador, a ese trabajador le llega un aviso.
+- Cuando un trabajador pide algo (corrección, descuento o cambio de inventario), al gerente le llega un aviso.
+
+
+4. FURGONES CON DOS TRABAJADORES
+--------------------------------
+- Un furgón puede llevar 1 o 2 trabajadores. Se asigna en Inventario, en el furgón.
+- Los dos que van en el mismo furgón comparten la misma ruta del día: lo que uno marca como
+  visitado, el otro también lo ve.
+- Las ventas y pagos muestran "Trabajador - Trabajador" (por ejemplo "Gonzalo - Juan"),
+  para saber quiénes iban juntos.
+- Venden del stock de su furgón.
+
+
+5. RUTA DEL DÍA
+---------------
+- El trabajador puede ordenar su ruta (cambiar el orden de los clientes a visitar).
+- Al seguir la ruta, el mapa se mueve y gira según hacia dónde va el teléfono, como un GPS.
+- El botón "Finalizar ruta del día" está en la pantalla de Ruta en curso.
+- El trabajador solo puede vender y cobrar a los clientes asignados en su ruta de hoy
+  (o a los que él mismo registró hoy). No puede venderle a cualquiera.
+- Clientes preasignados: es una sola lista para todos los trabajadores. Si un trabajador
+  aprieta la X, solo se le oculta a él, y se recuerda durante el día.
+- El mapa ya no muestra los lugares de Google (negocios, paraderos, etc.), así se ven mejor los clientes.
+
+
+6. CLIENTES NUEVOS
+------------------
+- Al agregar un cliente, se puede usar la dirección donde uno está parado (GPS): la app la escribe sola.
+- Si la comuna o el sector no existe, la zona se crea automáticamente.
+
+
+7. VENTAS, COBROS Y DESCUENTOS
+------------------------------
+- El gerente puede registrar una venta o un cobro a nombre de otro trabajador, aunque el
+  cliente no esté en la ruta (queda como visita fuera de ruta).
+- El descuento ahora se aplica sobre el total de la compra.
+- En Ajustes el gerente define, por trabajador, cuánto descuento puede dar y qué tipo de venta
+  puede hacer (contado, crédito o ambas). Si el trabajador quiere dar más, envía una solicitud.
+- Las solicitudes de descuento están dentro de "Solicitudes".
+
+
+8. INVENTARIO DEL TRABAJADOR
+----------------------------
+- El trabajador tiene "Mi inventario", donde ve lo que lleva en su furgón.
+- Puede pedirle al gerente un cambio de inventario; el gerente lo aprueba o rechaza en
+  Solicitudes, pestaña Inventario.
+
+
+9. TRABAJADORES
+---------------
+- En la lista de Trabajadores hay un botón de WhatsApp para escribirle directo a cada uno.
+- Se quitó la pantalla "Equipo", porque ya no hacía falta.
+
+
+10. HISTORIAL Y CALENDARIO
+--------------------------
+- El Historial se ve como una planilla tipo Excel: ventas y pagos, con filtros y totales.
+- En el Calendario, al tocar un día pasado se ve el resumen de ese día (ventas, cobros y quién vendió).
+
+
+11. SIN INTERNET
+----------------
+- Si el teléfono se queda sin señal, la app sigue funcionando: muestra lo último que cargó y
+  guarda las ventas, pagos y visitas. Cuando vuelve la señal, los envía solos y sin duplicarlos.
+
+
+12. ASPECTO
+-----------
+- Colores más vivos y parejos en toda la app: cada tema tiene su color, y las listas y tarjetas
+  tienen un borde de color según su estado (pendiente, pagado, atrasado, etc.).
+
+
+13. SEGURIDAD Y REGISTRO DE CAMBIOS (AUDITORÍA)
+-----------------------------------------------
+- Queda anotado quién crea, cambia o borra ventas, pagos, clientes, trabajadores, productos,
+  furgones y ajustes, y cómo estaba antes y después. Solo el gerente puede verlo.
+- Se limpió la base de datos: se quitaron las partes que ya no se usaban (rutas de la semana,
+  estado del pedido), se agregaron reglas para que no se repitan datos y se hizo más rápida.
+- Hay 68 pruebas automáticas que revisan que todo funcione bien (todas pasan).
+
+
+14. ANTES DE EMPEZAR A OPERAR
+-----------------------------
+- Correr en Supabase (SQL Editor) el archivo supabase/seeds/borrar_datos_prueba_total.sql
+  para borrar los clientes "(prueba)" y sus ventas de ejemplo.
+- La app se instala con el archivo APK. Al instalar, Android puede avisar que no es de Play Store:
+  apretar "Más detalles" y "Instalar de todas formas".

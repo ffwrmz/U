@@ -10,6 +10,16 @@ Pegar y correr en **Supabase > SQL Editor** (en este orden) los archivos que aú
 1. `supabase/migrations/20261123160000_modo_sin_conexion.sql`
 2. `supabase/migrations/20261124160000_finalizar_mi_ruta.sql`
 3. `supabase/migrations/20261124190000_rut_trabajadores.sql`
+4. `supabase/migrations/20261124200000_arreglos_pruebas_v13_r08.sql`
+5. `supabase/migrations/20261124210000_normalizar_rut.sql`
+6. `supabase/migrations/20261125020000_ajustes_permisos.sql`
+7. `supabase/migrations/20261125040000_fuera_de_ruta_inventario.sql`
+8. `supabase/migrations/20261125200000_venta_solo_asignados.sql`
+9. `supabase/migrations/20261125210000_pruebas_furgon_asignado.sql`
+10. `supabase/migrations/20261125220000_pruebas_ajuste_f01_a04.sql`
+11. `supabase/migrations/20261125230000_furgon_dos_trabajadores.sql`
+12. `supabase/migrations/20261125240000_depuracion.sql`
+13. `supabase/migrations/20261125241000_auditoria.sql`
 
 Funciones (Edge Functions) en **Supabase > Edge Functions**:
 
@@ -80,8 +90,7 @@ Para la tienda Google Play (opcional, cuenta de desarrollador USD 25 una vez): `
 - [ ] SQL pendientes corridos (punto 1) y `select * from pruebas.todas();` con todo en PASA.
 - [ ] login-rut desplegada (sin Verify JWT) y gestionar-trabajador actualizada.
 - [ ] RUT puesto a todos los trabajadores; probar entrar con RUT.
-- [ ] Borrar datos de prueba: correr `supabase/seeds/borrar_datos_prueba_calendario.sql` y eliminar o desactivar
-      los clientes de prueba (los que dicen "(prueba)" en el nombre).
+- [ ] Borrar datos de prueba: correr `supabase/seeds/borrar_datos_prueba_total.sql`.
 - [ ] Clave de Google Maps creada y guardada en EAS; el mapa se ve en el APK.
 - [ ] Unir el PR #1 a `main` en GitHub.
 - [ ] Supabase plan gratis: el proyecto **se pausa tras 7 días sin uso** y no tiene respaldos automáticos descargables.

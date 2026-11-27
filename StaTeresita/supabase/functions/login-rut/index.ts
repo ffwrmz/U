@@ -51,15 +51,12 @@ Deno.serve(async (req) => {
 
     const url = Deno.env.get("SUPABASE_URL")!;
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-    const { data: perfil } = await admin.from("perfiles").select("id, email, activo").eq("rut", rut).maybeSingle();
+    const { data: perfil } = await admin.from("perfiles").select("id, activo").eq("rut", rut).maybeSingle();
     if (!perfil || perfil.activo === false) { anotarFallo(rut); return json(INCORRECTO, 401); }
 
-    // Correo de la cuenta (el de perfiles o, si falta, el de la cuenta de acceso)
-    let email = perfil.email as string | null;
-    if (!email) {
-      const { data: u } = await admin.auth.admin.getUserById(perfil.id);
-      email = u?.user?.email ?? null;
-    }
+    // Correo interno de la cuenta de acceso (no se guarda en perfiles)
+    const { data: u } = await admin.auth.admin.getUserById(perfil.id);
+    const email = u?.user?.email ?? null;
     if (!email) { anotarFallo(rut); return json(INCORRECTO, 401); }
 
     const publico = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false } });

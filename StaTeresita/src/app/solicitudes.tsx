@@ -1,10 +1,12 @@
 import Header from '@/components/Header'
+import SolicitudesDescuento from '@/components/SolicitudesDescuento'
+import SolicitudesInventario from '@/components/SolicitudesInventario'
 import { Palette } from '@/constants/palette'
 import { cambiosDe, Correccion, escucharCorrecciones, ESTADO_TEXTO, listarCorrecciones, resolverCorreccion, TITULO_TIPO } from '@/lib/correcciones'
 import { fechaCorta } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
-import { useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -12,6 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 // Solicitudes de corrección (gerente): lo que pidieron corregir los caseros, con Aprobar / Rechazar.
 // Al aprobar, la base aplica el cambio (pago, producto vendido con su stock, o datos del cliente).
 const Solicitudes = () => {
+  // Tres tipos de solicitudes de los caseros: corrección de datos, descuentos e inventario del furgón
+  const { tab } = useLocalSearchParams<{ tab?: string }>()
+  const [seccion, setSeccion] = useState<'correcciones' | 'descuentos' | 'inventario'>(tab === 'inventario' ? 'inventario' : tab === 'descuentos' ? 'descuentos' : 'correcciones')
   const router = useRouter()
   const [pestana, setPestana] = useState<'pendiente' | 'resueltas'>('pendiente')
   const [lista, setLista] = useState<Correccion[]>([])
@@ -57,7 +62,16 @@ const Solicitudes = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-      <Header title="Solicitudes de corrección" subtitle="Errores que pidieron corregir los caseros" />
+      <Header title="Solicitudes" subtitle="Lo que pidieron los caseros" />
+      <View style={styles.secciones}>
+        {([['correcciones', 'Correcciones'], ['descuentos', 'Descuentos'], ['inventario', 'Inventario']] as const).map(([k, t]) => (
+          <Pressable key={k} style={[styles.seccionBtn, seccion === k && styles.seccionSel]} onPress={() => setSeccion(k)}>
+            <Text style={[styles.seccionText, seccion === k && { color: Palette.navy }]}>{t}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {seccion === 'inventario' ? <SolicitudesInventario /> : seccion === 'descuentos' ? <SolicitudesDescuento /> : (
+      <>
       <View style={styles.tabs}>
         {(['pendiente', 'resueltas'] as const).map((t) => (
           <Pressable key={t} style={[styles.tab, pestana === t && styles.tabSel]} onPress={() => { setPestana(t); setCargando(true) }}>
@@ -114,11 +128,17 @@ const Solicitudes = () => {
           ))}
         </ScrollView>
       )}
+      </>
+      )}
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
+  secciones: { flexDirection: 'row', marginHorizontal: 16, marginTop: 12, backgroundColor: Palette.navy, borderRadius: 12, padding: 4 },
+  seccionBtn: { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: 'center' },
+  seccionSel: { backgroundColor: Palette.cream },
+  seccionText: { fontSize: 14, fontWeight: '800', color: Palette.onNavy },
   container: { flex: 1, backgroundColor: Palette.cream },
   tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 14 },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 999, backgroundColor: Palette.navySoft, alignItems: 'center' },

@@ -1,3 +1,4 @@
+import { principalDe } from '@/lib/furgones'
 import DireccionCliente from '@/components/DireccionCliente'
 import Header from '@/components/Header'
 import MapaClientes from '@/components/MapaClientes'
@@ -158,7 +159,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
-      setYo(user.id)
+      // "Mi ruta" = la del equipo del furgón (a nombre del principal)
+      const dueñoRuta = await principalDe(user.id)
+      setYo(dueñoRuta)
       const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', user.id).single()
       const gerente = esGerente(perfil?.rol)
       setSoyGerente(gerente)
@@ -166,12 +169,12 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
       // Cada modo corresponde a un estado de la jornada: si no calza, se va a la pantalla que corresponde
       // Estado de la ruta de cada casero (cada uno puede comenzar la suya)
       const est = j ? await listarEstadosCaseros(j.id) : {}
-      const miEstado = estadoRutaDe(j, est, user.id)
+      const miEstado = estadoRutaDe(j, est, dueñoRuta)
       if (organizando && miEstado === 'en_curso' && !reorganizando) { router.replace('/ruta-en-curso' as any); return }
       if (!organizando && miEstado === 'preparacion') { router.replace('/organizar-ruta' as any); return }
       setEstados(est)
       setJornada(j)
-      const ps = j ? await listarParadas(j.id, gerente ? undefined : user.id) : []
+      const ps = j ? await listarParadas(j.id, gerente ? undefined : dueñoRuta) : []
       setTodas(ps)
       if (gerente) {
         const ids = Array.from(new Set(ps.map((p) => p.vendedor_id)))
@@ -180,9 +183,9 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
         setCaseros(lista)
         // Por defecto la ruta de Gonzalo; si no está, la propia del gerente; si no, la del primer casero
         const gonzalo = lista.find((c) => esCaseroPrincipal(c.nombre))?.id
-        setVerDe((actual) => actual && ids.includes(actual) ? actual : gonzalo ?? (ids.includes(user.id) ? user.id : lista[0]?.id ?? null))
+        setVerDe((actual) => actual && ids.includes(actual) ? actual : gonzalo ?? (ids.includes(dueñoRuta) ? dueñoRuta : lista[0]?.id ?? null))
       } else {
-        setVerDe(user.id)
+        setVerDe(dueñoRuta)
       }
       setError(null)
     } catch (e: any) {
@@ -720,6 +723,7 @@ const PantallaRuta = ({ modo }: { modo: ModoRuta }) => {
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={styles.nombreFila}>
                         <Text style={[styles.nombre, { flex: 1 }]} numberOfLines={1}>{c?.nombre ?? 'Cliente'}</Text>
+                        {p.fuera_de_ruta && <Text style={styles.fueraRuta}>Fuera de ruta</Text>}
                         {auto ? (
                           <Text style={styles.dist}>{textoDistancia(auto.distancia)} · {textoDuracion(auto.duracion)}</Text>
                         ) : dist != null ? (
@@ -861,7 +865,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '700', color: Palette.navy },
   mapa: { backgroundColor: Palette.card, borderBottomWidth: 1, borderBottomColor: Palette.border, overflow: 'hidden', zIndex: 0, position: 'relative' },
   caserosFila: { flexGrow: 0, flexShrink: 0, zIndex: 2, backgroundColor: Palette.cream },
-  mapaAviso: { position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 10, padding: 8 },
+  mapaAviso: { position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: Palette.mapaVelo, borderRadius: 10, padding: 8 },
   mapaAvisoText: { fontSize: 12, color: Palette.textMuted, textAlign: 'center' },
   avance: { paddingHorizontal: 16, paddingTop: 10, gap: 6 },
   avanceFila: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
@@ -873,9 +877,10 @@ const styles = StyleSheet.create({
   content: { padding: 12, gap: 10, paddingBottom: 40 },
   flechas: { alignItems: 'center', justifyContent: 'center', gap: 2 },
   botonesMapa: { position: 'absolute', right: 10, top: 10, gap: 8 },
-  botonMapa: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Palette.border, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  botonMapa: { width: 40, height: 40, borderRadius: 20, backgroundColor: Palette.mapaVelo, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Palette.border, shadowColor: Palette.shadow, shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   botonMapaOn: { backgroundColor: Palette.navy, borderColor: Palette.navy },
   norteText: { fontSize: 14, fontWeight: '900', color: Palette.navy },
+  fueraRuta: { fontSize: 11, fontWeight: '800', color: Palette.lilac, backgroundColor: Palette.lilacSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   reorganizar: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   reorganizarText: { fontSize: 12, fontWeight: '800', color: Palette.navy },
   pie: { padding: 12, borderTopWidth: 1, borderTopColor: Palette.border, backgroundColor: Palette.cream },
@@ -891,7 +896,7 @@ const styles = StyleSheet.create({
   manillaCompacta: { width: 28, height: 28, borderRadius: 8 },
   iconosCompactos: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   iconoCompacto: { width: 30, height: 30, borderRadius: 15 },
-  cardArrastrada: { backgroundColor: Palette.inputFill, borderColor: Palette.navy, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  cardArrastrada: { backgroundColor: Palette.inputFill, borderColor: Palette.navy, shadowColor: Palette.shadow, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   numeroCol: { alignItems: 'center', gap: 6 },
   manilla: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: Palette.navySoft },
   // Ruta en curso: franja izquierda y fondo según el estado (los mismos colores de los números del mapa)

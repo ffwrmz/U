@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   agregarText: { color: Palette.onNavy, fontSize: 13, fontWeight: '800' },
   vacio: { textAlign: 'center', color: Palette.textMuted, marginTop: 30, fontSize: 14, paddingHorizontal: 20 },
   vacioMini: { color: Palette.textFaint, fontSize: 13 },
-  fondo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 },
+  fondo: { flex: 1, backgroundColor: Palette.overlay, justifyContent: 'center', padding: 24 },
   dialogo: { backgroundColor: Palette.cream, borderRadius: 18, padding: 20, gap: 14 },
   dialogoTitulo: { fontSize: 17, fontWeight: '800', color: Palette.text },
   input: { backgroundColor: Palette.card, borderWidth: 1, borderColor: Palette.border, borderRadius: 12, paddingHorizontal: 14, height: 50, fontSize: 15, color: Palette.text },

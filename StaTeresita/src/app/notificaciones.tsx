@@ -13,6 +13,8 @@ const ICONO: Record<string, keyof typeof Ionicons.glyphMap> = {
   correccion_nueva: 'create-outline',
   correccion_resuelta: 'checkmark-done-outline',
   descuento_nuevo: 'pricetag-outline',
+  inventario_nuevo: 'cube-outline',
+  inventario_resuelto: 'cube-outline',
 }
 
 const hace = (iso: string) => {

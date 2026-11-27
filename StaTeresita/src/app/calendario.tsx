@@ -131,7 +131,7 @@ const Calendario = () => {
 
           {delDia.length === 0 && <Text style={styles.vacioDia}>No hay clientes para este día.</Text>}
           {delDia.map((p) => (
-            <View key={`${p.cliente_id}-${p.id ?? p.lista?.id}`} style={styles.fila}>
+            <View key={`${p.cliente_id}-${p.id ?? p.lista?.id}`} style={[styles.fila, { borderLeftWidth: 4, borderLeftColor: p.lista?.color ?? Palette.sky }]}>
               <Pressable style={{ flex: 1, gap: 2 }} onPress={() => router.push({ pathname: '/cliente/[id]', params: { id: p.cliente_id } } as any)}>
                 <Text style={styles.nombre} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
                 {p.cliente && <DireccionCliente c={p.cliente} compacta />}

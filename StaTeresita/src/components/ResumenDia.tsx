@@ -1,3 +1,4 @@
+import { cargarFurgones, equipoEn, nombreEquipo, pareja, principalEn } from '@/lib/furgones'
 import { Palette } from '@/constants/palette'
 import { clp } from '@/lib/format'
 import { listarParadas, Parada } from '@/lib/rutas'
@@ -7,8 +8,8 @@ import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
 
-interface Pago { id: string; monto: number; metodo: string | null; quien: string | null; cliente_id: string | null; cliente: string | null }
-interface Venta { id: string; monto: number; quien: string | null; cliente_id: string | null; cliente: string | null; items: { nombre: string; cantidad: number }[] }
+interface Pago { id: string; monto: number; metodo: string | null; quien: string | null; acomp?: string | null; cliente_id: string | null; cliente: string | null }
+interface Venta { id: string; monto: number; quien: string | null; acomp?: string | null; cliente_id: string | null; cliente: string | null; items: { nombre: string; cantidad: number }[] }
 interface Trabajador {
   id: string
   nombre: string
@@ -62,27 +63,33 @@ const ResumenDia = ({ fecha }: { fecha: string }) => {
       const { data: j } = await supabase.from('jornadas').select('id').eq('fecha', fecha).maybeSingle()
       const [paradas, pg, vs] = await Promise.all([
         j ? listarParadas((j as any).id) : Promise.resolve([] as Parada[]),
-        supabase.from('pagos').select('id, monto_abonado, metodo_pago, cobrador_id, venta:ventas_pedidos ( cliente_id, cliente:clientes ( nombre ) )')
+        supabase.from('pagos').select('*, venta:ventas_pedidos ( cliente_id, cliente:clientes ( nombre ) )')
           .gte('creado_en', desde).lt('creado_en', hasta),
-        supabase.from('ventas_pedidos').select('id, vendedor_id, cliente_id, monto_total, cliente:clientes ( nombre ), venta_items ( cantidad, productos ( nombre ) )')
+        supabase.from('ventas_pedidos').select('*, cliente:clientes ( nombre ), venta_items ( cantidad, productos ( nombre ) )')
           .gte('creado_en', desde).lt('creado_en', hasta).neq('estado_pago', 'anulada'),
       ])
       if (pg.error) throw pg.error
       if (vs.error) throw vs.error
       const pagos: Pago[] = ((pg.data as any[]) || []).map((x) => ({
-        id: x.id, monto: Number(x.monto_abonado), metodo: x.metodo_pago, quien: x.cobrador_id,
+        id: x.id, monto: Number(x.monto_abonado), metodo: x.metodo_pago, quien: x.cobrador_id, acomp: x.acompanante_id ?? null,
         cliente_id: x.venta?.cliente_id ?? null, cliente: x.venta?.cliente?.nombre ?? null,
       }))
       const ventas: Venta[] = ((vs.data as any[]) || []).map((x) => ({
-        id: x.id, monto: Number(x.monto_total), quien: x.vendedor_id, cliente_id: x.cliente_id, cliente: x.cliente?.nombre ?? null,
+        id: x.id, monto: Number(x.monto_total), quien: x.vendedor_id, acomp: x.acompanante_id ?? null, cliente_id: x.cliente_id, cliente: x.cliente?.nombre ?? null,
         items: ((x.venta_items as any[]) || []).map((i) => ({ nombre: i.productos?.nombre ?? 'Producto', cantidad: Number(i.cantidad) })),
       }))
-      const ids = Array.from(new Set([...paradas.map((p) => p.vendedor_id), ...pagos.map((p) => p.quien), ...ventas.map((v) => v.quien)].filter(Boolean))) as string[]
-      const { data: pe } = ids.length ? await supabase.from('perfiles').select('id, nombre').in('id', ids) : { data: [] }
+      // Los del mismo furgón se muestran juntos ("Gonzalo - Juan"): todo se agrupa en el principal del equipo
+      const fs = await cargarFurgones()
+      pagos.forEach((p) => { if (p.quien) p.quien = principalEn(fs, p.quien) })
+      ventas.forEach((v) => { if (v.quien) v.quien = principalEn(fs, v.quien) })
+      const ids = Array.from(new Set([...paradas.map((p) => principalEn(fs, p.vendedor_id)), ...pagos.map((p) => p.quien), ...ventas.map((v) => v.quien)].filter(Boolean))) as string[]
+      const todosIds = Array.from(new Set([...ids, ...ids.flatMap((i) => equipoEn(fs, i)), ...[...pagos, ...ventas].map((x) => x.acomp).filter(Boolean) as string[]]))
+      const { data: pe } = todosIds.length ? await supabase.from('perfiles').select('id, nombre').in('id', todosIds) : { data: [] }
       const nombres = Object.fromEntries(((pe as any[]) || []).map((p) => [p.id, p.nombre]))
       setTrabajadores(ids.map((id) => ({
-        id, nombre: nombres[id] ?? 'Trabajador',
-        paradas: paradas.filter((p) => p.vendedor_id === id).sort((a, b) => a.orden - b.orden),
+        // "Gonzalo - Juan" si ese día vendió o cobró con un compañero de furgón
+        id, nombre: equipoEn(fs, id).length > 1 ? nombreEquipo(fs, id, (x) => nombres[x]) : pareja((x) => nombres[x], id, [...ventas, ...pagos].find((v) => v.quien === id && v.acomp)?.acomp ?? null),
+        paradas: paradas.filter((p) => principalEn(fs, p.vendedor_id) === id).sort((a, b) => a.orden - b.orden),
         pagos: pagos.filter((p) => p.quien === id),
         ventas: ventas.filter((v) => v.quien === id),
       })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')))
@@ -170,7 +177,7 @@ const ResumenDia = ({ fecha }: { fecha: string }) => {
                   return (
                     <Pressable key={p.id} style={styles.fila} onPress={() => abrirCliente(p.cliente_id)}>
                       <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={styles.cliente} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}</Text>
+                        <Text style={styles.cliente} numberOfLines={1}>{p.cliente?.nombre ?? 'Cliente'}{p.fuera_de_ruta ? ' · fuera de ruta' : ''}</Text>
                         {(pagado > 0 || vendido > 0) && (
                           <Text style={styles.detalle}>{[pagado > 0 && `Pagó ${clp(pagado)}`, vendido > 0 && `Compró ${clp(vendido)}`].filter(Boolean).join(' · ')}</Text>
                         )}

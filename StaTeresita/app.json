@@ -52,17 +52,20 @@
           "locationWhenInUsePermission": "Necesitamos tu ubicación para mostrar el mapa de clientes, seguir la ruta y guardar la ubicación de las casas."
         }
       ],
-      [
-        "react-native-maps",
-        {
-          "flex": 1
-        }
-      ],
+      "react-native-maps",
       [
         "expo-notifications",
         {
           "icon": "./assets/images/android-icon-monochrome.png",
           "color": "#262C60"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# WorkManager/Room (lo usa react-native-maps): R8 borraba la base interna de WorkManager y la app se cerraba al abrir\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.WorkDatabase_Impl { *; }\n-keep class androidx.work.** { *; }"
+          }
         }
       ]
     ],

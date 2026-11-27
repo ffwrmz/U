@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   submitButtonDisabled: {
-    backgroundColor: '#8C90B5',
+    backgroundColor: Palette.navyDisabled,
   },
   submitButtonText: { color: Palette.onNavy, fontSize: 16, fontWeight: '700' },
 })

@@ -1,5 +1,7 @@
+import { pareja } from '@/lib/furgones'
 import EstadoCorrecciones from '@/components/EstadoCorrecciones'
 import Header from '@/components/Header'
+import QuienLoHizo from '@/components/QuienLoHizo'
 import PedirCorreccion, { ObjetivoCorreccion } from '@/components/PedirCorreccion'
 import ProximasVisitas from '@/components/ProximasVisitas'
 import SelectorDireccion from '@/components/SelectorDireccion'
@@ -7,6 +9,7 @@ import TelefonoInput from '@/components/TelefonoInput'
 import { Palette } from '@/constants/palette'
 import { Correccion, correccionesDeCliente } from '@/lib/correcciones'
 import { hayConexion } from '@/lib/offline/red'
+import { clientesPermitidosHoy } from '@/lib/permitidos'
 import { esGerente } from '@/lib/roles'
 import { clp, fechaCorta, normalizarTelefono, telefonoLocal } from '@/lib/format'
 import { supabase } from '@/lib/supabase'
@@ -19,7 +22,7 @@ import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 interface Cliente { id: string; nombre: string; rut: string | null; telefono: string | null; direccion: string | null }
-interface Pago { id: string; monto_abonado: number; metodo_pago: string | null; fecha_pago: string | null; creado_en: string | null; cobrador_id: string | null }
+interface Pago { id: string; monto_abonado: number; metodo_pago: string | null; fecha_pago: string | null; creado_en: string | null; cobrador_id: string | null; acompanante_id?: string | null }
 interface Venta {
   id: string
   monto_total: number
@@ -62,6 +65,10 @@ const HistorialCliente = () => {
   const [metodo, setMetodo] = useState<'efectivo' | 'transferencia'>('efectivo')
   const [guardando, setGuardando] = useState(false)
   const [destino, setDestino] = useState<Venta | null>(null) // null = a la compra más antigua (FIFO)
+  const [cobrador, setCobrador] = useState<string | null>(null) // gerente: cobro a nombre de otro trabajador
+  // Casero: solo vende y cobra a clientes de su ruta de hoy (o que registró hoy)
+  const [permitido, setPermitido] = useState(true)
+  useEffect(() => { clientesPermitidosHoy().then((s) => setPermitido(!s || s.has(String(id)))) }, [id])
 
   // Editar datos del cliente (solo el gerente)
   const [soyGerente, setSoyGerente] = useState(false)
@@ -90,7 +97,7 @@ const HistorialCliente = () => {
       const [c, v] = await Promise.all([
         supabase.from('clientes').select('id, nombre, rut, telefono, direccion').eq('id', id).single(),
         supabase.from('ventas_pedidos')
-          .select('id, monto_total, saldo_pendiente, estado_pago, descripcion, fecha_venta, pagos ( id, monto_abonado, metodo_pago, fecha_pago, creado_en, cobrador_id )')
+          .select('id, monto_total, saldo_pendiente, estado_pago, descripcion, fecha_venta, pagos ( * )')
           .eq('cliente_id', id)
           .order('fecha_venta', { ascending: false }),
       ])
@@ -104,7 +111,7 @@ const HistorialCliente = () => {
         if (!li.error) setLineas((li.data as any[]) || [])
       }
       // Nombre de quien cobró cada pago
-      const ids = Array.from(new Set(lista.flatMap((x) => (x.pagos || []).map((p) => p.cobrador_id)).filter(Boolean))) as string[]
+      const ids = Array.from(new Set(lista.flatMap((x) => (x.pagos || []).flatMap((p) => [p.cobrador_id, p.acompanante_id])).filter(Boolean))) as string[]
       if (ids.length > 0) {
         const pe = await supabase.from('perfiles').select('id, nombre').in('id', ids)
         if (!pe.error) setCobradores(Object.fromEntries(((pe.data as any[]) || []).map((x) => [x.id, x.nombre])))
@@ -146,9 +153,10 @@ const HistorialCliente = () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('No hay sesión activa')
       // La base reparte el abono FIFO (o lo aplica a la compra elegida) en una sola transacción
-      const { error } = await supabase.rpc('registrar_pago', destino
-        ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id }
-        : { p_monto: abono, p_metodo: metodo, p_cliente_id: id })
+      const { error } = await supabase.rpc('registrar_pago', {
+        ...(destino ? { p_monto: abono, p_metodo: metodo, p_venta_id: destino.id } : { p_monto: abono, p_metodo: metodo, p_cliente_id: id }),
+        ...(cobrador ? { p_vendedor: cobrador } : {}),
+      })
       if (error) throw error
       setModalPago(false)
       Alert.alert('Éxito', hayConexion() ? 'Pago registrado' : 'Pago guardado sin conexión. Se subirá solo cuando vuelva la señal.')
@@ -173,7 +181,7 @@ const HistorialCliente = () => {
     let acumulado = 0
     const filas = pagos.map((p) => {
       acumulado += Number(p.monto_abonado)
-      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? (cobradores[p.cobrador_id] ?? '').split(' ')[0] : '' }
+      return { id: p.id, monto: Number(p.monto_abonado), fecha: fechaCorta(fechaPago(p)) || '', abono: clp(Number(p.monto_abonado)), saldo: clp(Math.max(total - acumulado, 0)), metodo: p.metodo_pago, quien: p.cobrador_id ? pareja((x) => (cobradores[x] ?? '').split(' ')[0] || undefined, p.cobrador_id, p.acompanante_id) : '' }
     }).reverse()
     const pagado = Math.max(total - Number(v.saldo_pendiente), 0)
     const pct = total > 0 ? Math.min(pagado / total, 1) : 0
@@ -289,6 +297,10 @@ const HistorialCliente = () => {
             </View>
           </View>
 
+          {!permitido && (
+            <Text style={styles.noAsignado}>Este cliente no está en tu ruta de hoy. Para venderle o cobrarle, pídele al gerente que te lo asigne.</Text>
+          )}
+          {permitido && (
           <View style={styles.accionesFila}>
             <Pressable
               style={({ pressed }) => [styles.accion, { backgroundColor: Palette.navy }, pressed && { opacity: 0.85 }]}
@@ -306,6 +318,7 @@ const HistorialCliente = () => {
               <Text style={[styles.accionText, deuda <= 0 && { color: Palette.textFaint }]}>{deuda > 0 ? 'Agregar pago' : 'Sin deuda'}</Text>
             </Pressable>
           </View>
+          )}
 
           <Text style={styles.seccion}>Compras ({ventas.length})</Text>
           {ventas.length === 0 && <Text style={styles.vacio}>Este cliente aún no tiene compras.</Text>}
@@ -335,7 +348,7 @@ const HistorialCliente = () => {
                   <View style={[styles.desplegado, { backgroundColor: d.fondo }]}>
                     <Text style={styles.bannerSub}>Pagado {clp(d.pagado)} de {clp(d.total)} · {Math.round(d.pct * 100)}%</Text>
 
-                    {!d.anulada && !d.pagada && (
+                    {permitido && !d.anulada && !d.pagada && (
                       <Pressable style={styles.botonAbonar} onPress={() => abrirPago(v)}>
                         <Ionicons name="add-circle-outline" size={16} color={Palette.onNavy} />
                         <Text style={styles.botonAbonarText}>Abonar a esta compra</Text>
@@ -413,6 +426,8 @@ const HistorialCliente = () => {
                 placeholder="0" placeholderTextColor={Palette.textFaint} />
             </View>
 
+            {soyGerente && <QuienLoHizo titulo="¿Quién hizo el cobro?" valor={cobrador} onCambiar={setCobrador} />}
+
             <Text style={styles.label}>Forma de pago</Text>
             <View style={styles.metodos}>
               {([['efectivo', 'Efectivo', 'cash-outline'], ['transferencia', 'Transferencia', 'swap-horizontal']] as const).map(([k, t, ic]) => (
@@ -475,6 +490,7 @@ const Dato = ({ icono, texto }: { icono: keyof typeof Ionicons.glyphMap; texto: 
 )
 
 const styles = StyleSheet.create({
+  noAsignado: { fontSize: 13, fontWeight: '700', color: Palette.amber, backgroundColor: Palette.amberSoft, borderRadius: 12, padding: 12 },
   itemFila: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Palette.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   itemFilaText: { flex: 1, fontSize: 13, fontWeight: '700', color: Palette.text },
   corregir: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Palette.navySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
@@ -501,10 +517,10 @@ const styles = StyleSheet.create({
   itemNombre: { fontSize: 15, fontWeight: '800', color: Palette.text },
   estadoPill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 },
   estadoPillText: { fontSize: 12, fontWeight: '800' },
-  barra: { height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden' },
+  barra: { height: 8, borderRadius: 4, backgroundColor: Palette.border, overflow: 'hidden' },
   barraRelleno: { height: 8, borderRadius: 4 },
   bannerSub: { fontSize: 12, color: Palette.textMuted },
-  quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 60 },
+  quien: { fontSize: 10, color: Palette.textMuted, marginTop: 1, maxWidth: 90 },
   botonGuardar: { backgroundColor: Palette.navy, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   botonPagarText: { color: Palette.onNavy, fontSize: 16, fontWeight: '800' },
   modalContainer: { flex: 1, backgroundColor: Palette.cream },
@@ -525,7 +541,7 @@ const styles = StyleSheet.create({
   matriz: { backgroundColor: Palette.card, borderRadius: 14, borderWidth: 1, borderColor: Palette.border, overflow: 'hidden' },
   fila: { flexDirection: 'row' },
   filaHead: { backgroundColor: Palette.navySoft },
-  filaInterna: { borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.07)' },
+  filaInterna: { borderTopWidth: 1, borderTopColor: Palette.border },
   celda: { paddingHorizontal: 6, paddingVertical: 10, fontSize: 12, color: Palette.text, justifyContent: 'center' },
   celdaHead: { fontSize: 11, fontWeight: '800', color: Palette.navy, paddingVertical: 9 },
   celdaNum: { textAlign: 'right' },
