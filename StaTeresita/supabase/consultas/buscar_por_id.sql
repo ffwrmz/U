@@ -3,7 +3,7 @@
 -- Supabase > SQL Editor: cambia el id de la línea 'buscar' y aprieta Run. Solo lee, no cambia nada.
 -- Primero salen las filas donde es el id propio (columna id) y después donde aparece como referencia.
 
-with buscar as (select '11111111-1111-1111-1111-111111111111'::uuid as id)  -- <<< pega aquí el id,
+with buscar as (select '11111111-1111-1111-1111-111111111111'::uuid as id),  -- <<< pega aquí el id
 r as (
   select c.table_name as tabla, c.column_name as columna,
     (xpath('/row/j/text()', query_to_xml(format(
